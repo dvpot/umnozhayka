@@ -20,15 +20,23 @@ Node.js 18+. Команда `npm run check` запускает тесты и с�
 Развёртывание подготовлено для **@umnozhayka_tgbot**, но не является подтверждённым до реального `tgcloud push` и проверки в Telegram. См. [пошаговую инструкцию](docs/TELEGRAM_DEPLOY.md).
 
 ```bash
-npm install
+npm ci
 npm run check
 npx tgcloud login
+npx tgcloud fetch
 npx tgcloud status
 npx tgcloud diff
+```
+
+`status` и `diff` сравнивают файлы с локальным снимком; `status` также может показать состояние webhook. После входа сначала выполните `npx tgcloud fetch`, чтобы обновить снимок модулей и статики из облака; проверьте, что `diff` не удаляет неизвестные модули, и только затем запускайте `npm run deploy`. `status` показывает app ID, но не username бота: сравните его с публичным префиксом токена из настроек нужного бота в BotFather. Если не используете `TGCLOUD_TOKEN` намеренно, сбросьте возможное старое значение командой `unset TGCLOUD_TOKEN`. Не используйте `--force`.
+
+После проверки цели и `diff` опубликуйте сборку:
+
+```bash
 npm run deploy
 ```
 
-Не публикуйте CLI токен и Bot API token. Не передавайте их в чат или GitHub. Конфигурация использует **Telegram Serverless**, отдельный VPS не нужен.
+Для `tgcloud login` нужен отдельный CLI Access token из @BotFather → @umnozhayka_tgbot → Serverless → CLI Access → Access token. Не используйте Bot API token и не публикуйте CLI token в чате, логах или GitHub. Конфигурация использует **Telegram Serverless**, отдельный VPS не нужен.
 
 ## Планы
 

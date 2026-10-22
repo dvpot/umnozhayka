@@ -24,4 +24,4 @@
 - корректные 81/9 уникальных примеров в обоих режимах;
 - браузерные проверки на 320–768 px, свайпы, реальный таймер;
 - запуск из BotFather Menu Button в Telegram;
-- Telegram Serverless deployment подтверждён CLI, не предположен.
+- Telegram Serverless deployment подтверждён CLI, не предположен; перед проверкой `status`/`diff` получен свежий снимок командой `tgcloud fetch`.
