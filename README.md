@@ -13,16 +13,18 @@
 
 ## Локальная проверка
 
-Node.js 18+. `npm ci && npm run check`. Тесты охватывают 100/10 примеров, отсутствие дублей и восстановление состояния; проверка в браузере и Telegram — отдельный этап.
+Node.js 18+. `npm ci && npm run check`. Тесты охватывают 100/10 примеров, отсутствие дублей и восстановление состояния; браузерную проверку выполняют отдельно.
 
 ## Telegram Serverless
 
-**Текущий опубликованный адрес до нового UI-релиза:** https://app8854507045.tgcloud.ai/
+Опубликована версия v0.3, Serverless revision `2`: <https://app8854507045.tgcloud.ai/>. Обработчик личной команды `/start`, приветственная картинка и inline-кнопка Mini App загружены. HTTP-проверки приложения, `welcome.png` и favicon вернули 200.
 
-Развёртывание требует авторизации CLI на доверенной VM. Перед новым релизом выполнить `npx tgcloud fetch`, `npx tgcloud status`, `npx tgcloud diff`, проверить app ID и изменения; только затем `npm run deploy`. После публикации перепроверить snapshot и реальный запуск. CLI 0.2.0 ранее сообщал ошибку записи локального snapshot уже после успешной загрузки; не повторять push без `fetch`.
+Перед следующим релизом выполнить `npx tgcloud fetch`, `npx tgcloud status`, `npx tgcloud diff`, проверить app ID и содержимое; затем `npm run deploy` без `--force`. После push снова выполнить fetch/status: CLI 0.2.0 может завершиться ошибкой записи локального snapshot уже после успешной загрузки.
+
+Username бота CLI не показывает. Для подтверждения, что сохранённая CLI-связь относится к `@umnozhayka_tgbot`, владелец сверяет app ID с настройками Serverless именно этого бота в BotFather.
 
 Инструкции: [Telegram deployment](docs/TELEGRAM_DEPLOY.md), [оформление бота](docs/BOT_PROFILE.md), [задача Codex](docs/CODEX_RELEASE_TASK.md).
 
-Изображения для Telegram: `app/assets/bot-avatar.png`, `app/assets/welcome.png` (редактируемые SVG рядом). Серверная команда `/start` запланирована с приветственной картинкой и inline Web App кнопкой. Она заработает после публикации нового обработчика в Serverless.
+Файлы оформления: `app/assets/bot-avatar.png`, `app/assets/welcome.png` и SVG-исходники. Для включения кнопки меню и проверки живого `/start` владелец должен выполнить шаги из [документации релиза](docs/TELEGRAM_DEPLOY.md).
 
 [План развития](docs/PLAN.md). Лицензия MIT.
