@@ -3,46 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f5f7ff">
+  <meta name="theme-color" content="#6c5ce7">
   <meta name="description" content="Умножайка — учим таблицу умножения играя">
   <title>Умножайка</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
   <script src="https://telegram.org/js/telegram-web-app.js?64"></script>
   <script type="module" src="./app.js"></script>
 </head>
 <body>
   <div class="shell">
-    <header class="header">
-      <div class="brand"><span class="brand-icon">×</span><span class="brand-title">Умножайка</span></div>
-      <div class="settings">
-        <label class="select-holder">
-          <span class="sr-only">Какую таблицу учим</span>
-          <select id="table-select" aria-label="Какую таблицу учим">
-            <option value="all">Все</option>
-            <option value="1">×1</option><option value="2">×2</option><option value="3">×3</option>
-            <option value="4">×4</option><option value="5">×5</option><option value="6">×6</option>
-            <option value="7">×7</option><option value="8">×8</option><option value="9">×9</option>
-          </select>
-        </label>
-        <label class="random-label"><input id="random-mode" type="checkbox"><span class="checkmark">✓</span><span>Вразброс</span></label>
-      </div>
+    <header class="header" aria-label="Настройки урока">
+      <label class="select-holder">
+        <span class="select-caption">Учим</span>
+        <select id="table-select" aria-label="Какую таблицу учим">
+          <option value="all">Все</option>
+          <option value="1">×1</option><option value="2">×2</option><option value="3">×3</option>
+          <option value="4">×4</option><option value="5">×5</option><option value="6">×6</option>
+          <option value="7">×7</option><option value="8">×8</option><option value="9">×9</option>
+          <option value="10">×10</option>
+        </select>
+      </label>
+      <button id="random-mode" class="shuffle-button" type="button" aria-label="Включить случайный порядок" aria-pressed="false" title="Перемешать примеры">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3c5 0 6 10 11 10h4"/><path d="m17 13 4 4-4 4"/><path d="M3 17h3c2.1 0 3.5-2.1 4.7-4.3"/><path d="M14 7.8C14.9 7.3 15.9 7 17 7h4"/><path d="m17 3 4 4-4 4"/></svg>
+      </button>
     </header>
     <main id="swipe-area" class="playground">
       <section id="lesson-screen" class="lesson">
-        <div class="line"><span id="lesson-label">Вся таблица умножения</span><span id="progress-text" class="counter">1 из 81</span></div>
+        <div class="line"><span id="lesson-label">Вся таблица умножения</span><span id="progress-text" class="counter">1 из 100</span></div>
         <div class="card">
           <div class="card-title">Сколько получится?</div>
+          <button class="card-arrow card-arrow-left" id="back-button" type="button" aria-label="Предыдущий пример" title="Предыдущий пример">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 5-7 7 7 7"/></svg>
+          </button>
           <div class="equation"><span id="left-number">1</span><span class="multiply">×</span><span id="right-number">1</span></div>
           <div class="equals">=</div>
-          <div id="answer" class="answer" aria-live="polite">?</div>
+          <button id="answer" class="answer" type="button" aria-label="Показать ответ" title="Нажми, чтобы узнать ответ">?</button>
           <div id="answer-meta" class="answer-meta">Ответ появится через 10 с</div>
           <div role="progressbar" id="timer-bar" aria-label="Время до ответа" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" class="timer"><div id="timer-fill" class="timer-fill"></div></div>
+          <button class="card-arrow card-arrow-right" id="next-button" type="button" aria-label="Следующий пример" title="Следующий пример">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 5 7 7-7 7"/></svg>
+          </button>
         </div>
-        <nav class="navigation" aria-label="Переключение примеров">
-          <button id="back-button" type="button">← Назад</button>
-          <span class="swipe-hint">Листай ↔</span>
-          <button id="next-button" type="button" class="primary">Дальше →</button>
-        </nav>
       </section>
       <section id="finish-screen" class="finish hidden" aria-label="Все примеры пройдены">
         <div class="star" aria-hidden="true">★</div>

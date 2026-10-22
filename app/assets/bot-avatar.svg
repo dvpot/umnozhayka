@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Логотип Умножайки с дружелюбным математическим персонажем">
+  <defs>
+    <linearGradient id="sky" x2="1" y2="1"><stop stop-color="#7157ec"/><stop offset="1" stop-color="#4e8de3"/></linearGradient>
+    <linearGradient id="sheet" x2="0" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#f5f4ff"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="126" fill="url(#sky)"/>
+  <circle cx="90" cy="116" r="48" fill="#ffe38a" opacity=".75"/>
+  <circle cx="430" cy="408" r="72" fill="#65e0d3" opacity=".55"/>
+  <path d="M399 72v55 M372 100h55" stroke="#fff" stroke-width="13" stroke-linecap="round" opacity=".8"/>
+  <g transform="rotate(-7 256 270)">
+    <rect x="91" y="100" width="340" height="353" rx="64" fill="#322e91" opacity=".25"/>
+    <rect x="82" y="90" width="340" height="353" rx="64" fill="url(#sheet)"/>
+    <rect x="130" y="128" width="244" height="57" rx="24" fill="#ece7ff"/>
+    <text x="252" y="172" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="38" fill="#6b55d9">2 × 3</text>
+    <circle cx="194" cy="254" r="12" fill="#32395e"/>
+    <circle cx="308" cy="254" r="12" fill="#32395e"/>
+    <path d="M202 299q50 49 100 0" fill="none" stroke="#32395e" stroke-width="14" stroke-linecap="round"/>
+    <path d="M157 350q94 60 188 0" fill="none" stroke="#29bfa4" stroke-width="14" stroke-linecap="round"/>
+    <circle cx="146" cy="278" r="24" fill="#ffb6a2" opacity=".75"/>
+    <circle cx="350" cy="278" r="24" fill="#ffb6a2" opacity=".75"/>
+  </g>
+  <circle cx="80" cy="363" r="28" fill="#ffd766"/><text x="80" y="375" font-family="DejaVu Sans,sans-serif" font-size="39" font-weight="bold" fill="#6952ba" text-anchor="middle">+</text>
+</svg>
