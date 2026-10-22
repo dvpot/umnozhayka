@@ -28,6 +28,7 @@ try {
   const telegram = window.Telegram?.WebApp;
   telegram?.ready();
   telegram?.expand();
+  telegram?.setHeaderColor?.('#6c5ce7');
 } catch { /* В обычном браузере Telegram SDK необязателен. */ }
 
 function save() {
@@ -48,9 +49,12 @@ function reveal() {
   if (revealed || document.hidden || session.index >= session.list.length) return;
   stopTimer();
   revealed = true;
-  ui.answer.textContent = String(session.list[session.index].answer);
+  const answer = String(session.list[session.index].answer);
+  ui.answer.textContent = answer;
   ui.answer.classList.add('revealed');
-  ui.meta.textContent = 'Правильно! Листай дальше';
+  ui.answer.setAttribute('aria-label', 'Ответ: ' + answer);
+  ui.answer.title = 'Ответ: ' + answer;
+  ui.meta.textContent = 'Ответ открыт — листай дальше';
   ui.fill.style.width = '100%';
   ui.bar.setAttribute('aria-valuenow', '10');
 }
@@ -73,14 +77,16 @@ function pauseTimer() {
 function render() {
   stopTimer();
   ui.table.value = String(session.table);
-  ui.random.checked = session.random;
+  ui.random.setAttribute('aria-pressed', String(session.random));
+  ui.random.setAttribute('aria-label', session.random ? 'Выключить случайный порядок' : 'Включить случайный порядок');
+  ui.random.title = session.random ? 'Вразброс: включено' : 'По порядку';
   save();
   if (session.index >= session.list.length) {
     ui.lesson.classList.add('hidden');
     ui.finish.classList.remove('hidden');
     ui.finishText.textContent = session.table === 'all'
-      ? 'Все 81 пример пройдены. Начать ещё раз?'
-      : 'Таблица на ' + session.table + ' пройдена — все 9 примеров!';
+      ? 'Все 100 примеров пройдены. Начать ещё раз?'
+      : 'Таблица на ' + session.table + ' пройдена — все 10 примеров!';
     ui.nextTable.classList.toggle('hidden', nextTable(session.table) === null);
     return;
   }
@@ -92,11 +98,13 @@ function render() {
   ui.left.textContent = String(task.a);
   ui.right.textContent = String(task.b);
   ui.back.disabled = session.index === 0;
-  ui.next.textContent = session.index === session.list.length - 1 ? 'Готово →' : 'Дальше →';
+  ui.next.setAttribute('aria-label', session.index === session.list.length - 1 ? 'Завершить упражнения' : 'Следующий пример');
   remaining = delay;
   revealed = false;
   ui.answer.classList.remove('revealed');
   ui.answer.textContent = '?';
+  ui.answer.setAttribute('aria-label', 'Показать ответ');
+  ui.answer.title = 'Нажми, чтобы узнать ответ';
   ui.fill.style.width = '0%';
   ui.bar.setAttribute('aria-valuenow', '0');
   updateCountdown();
@@ -117,11 +125,12 @@ function backward() {
   render();
 }
 ui.table.addEventListener('change', () => {
-  start(ui.table.value === 'all' ? 'all' : Number(ui.table.value), ui.random.checked);
+  start(ui.table.value === 'all' ? 'all' : Number(ui.table.value), session.random);
 });
-ui.random.addEventListener('change', () => start(session.table, ui.random.checked));
+ui.random.addEventListener('click', () => start(session.table, !session.random));
 ui.back.addEventListener('click', backward);
 ui.next.addEventListener('click', forward);
+ui.answer.addEventListener('click', reveal);
 byId('again-button').addEventListener('click', () => start(session.table, session.random));
 ui.nextTable.addEventListener('click', () => {
   const table = nextTable(session.table);
@@ -129,15 +138,16 @@ ui.nextTable.addEventListener('click', () => {
 });
 byId('finish-back-button').addEventListener('click', backward);
 document.addEventListener('keydown', e => {
-  if (e.target instanceof HTMLElement && ['SELECT','INPUT','TEXTAREA','BUTTON'].includes(e.target.tagName)) return;
-  if (e.key === 'ArrowLeft') forward();
-  if (e.key === 'ArrowRight') backward();
+  if (e.altKey || e.ctrlKey || e.metaKey || e.repeat) return;
+  if (e.target instanceof HTMLElement && ['SELECT','INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); backward(); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); forward(); }
 });
 let startPoint = null;
 ui.swipeArea.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (e.target instanceof Element && e.target.closest('button,select,input,label')) return;
-  startPoint = {id:e.pointerId,x:e.clientX,y:e.clientY};
+  startPoint = { id: e.pointerId, x: e.clientX, y: e.clientY };
 });
 ui.swipeArea.addEventListener('pointerup', e => {
   if (!startPoint || e.pointerId !== startPoint.id) return;
