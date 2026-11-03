@@ -31,16 +31,26 @@
     <main id="swipe-area" class="playground">
       <section id="lesson-screen" class="lesson">
         <div class="line"><span id="lesson-label">Вся таблица умножения</span><span id="progress-text" class="counter">1 из 100</span></div>
+        <div class="mode-switch" role="group" aria-label="Режим занятия">
+          <button id="study-mode" class="mode-option" type="button" aria-pressed="true">Смотрю пример</button>
+          <button id="quiz-mode" class="mode-option" type="button" aria-pressed="false">Выбери ответ</button>
+        </div>
         <div class="card">
-          <div class="card-title">Сколько получится?</div>
+          <div id="card-title" class="card-title">Сколько получится?</div>
           <button class="card-arrow card-arrow-left" id="back-button" type="button" aria-label="Предыдущий пример" title="Предыдущий пример">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 5-7 7 7 7"/></svg>
           </button>
           <div class="equation"><span id="left-number">1</span><span class="multiply">×</span><span id="right-number">1</span></div>
           <div class="equals">=</div>
-          <button id="answer" class="answer" type="button" aria-label="Показать ответ" title="Нажми, чтобы узнать ответ">?</button>
-          <div id="answer-meta" class="answer-meta">Ответ появится через 10 с</div>
-          <div role="progressbar" id="timer-bar" aria-label="Время до ответа" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" class="timer"><div id="timer-fill" class="timer-fill"></div></div>
+          <div id="study-controls" class="study-controls">
+            <button id="answer" class="answer" type="button" aria-label="Показать ответ" title="Нажми, чтобы узнать ответ">?</button>
+            <div id="answer-meta" class="answer-meta">Ответ появится через 10 с</div>
+            <div role="progressbar" id="timer-bar" aria-label="Время до ответа" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" class="timer"><div id="timer-fill" class="timer-fill"></div></div>
+          </div>
+          <div id="quiz-controls" class="quiz-controls hidden">
+            <div id="answer-options" class="answer-options" role="group" aria-label="Варианты ответа"></div>
+            <div id="quiz-feedback" class="quiz-feedback" aria-live="polite"></div>
+          </div>
           <button class="card-arrow card-arrow-right" id="next-button" type="button" aria-label="Следующий пример" title="Следующий пример">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 5 7 7-7 7"/></svg>
           </button>

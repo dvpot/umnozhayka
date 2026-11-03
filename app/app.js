@@ -1,10 +1,13 @@
-import { newSession, nextTable, packSession, unpackSession } from './engine.js';
+import { makeAnswerOptions, newSession, nextTable, packSession, unpackSession } from './engine.js';
 
 const byId = id => document.getElementById(id);
 const ui = {
   table: byId('table-select'), random: byId('random-mode'),
   lesson: byId('lesson-screen'), finish: byId('finish-screen'),
   label: byId('lesson-label'), progress: byId('progress-text'),
+  title: byId('card-title'), studyMode: byId('study-mode'), quizMode: byId('quiz-mode'),
+  studyControls: byId('study-controls'), quizControls: byId('quiz-controls'),
+  options: byId('answer-options'), feedback: byId('quiz-feedback'),
   left: byId('left-number'), right: byId('right-number'),
   answer: byId('answer'), meta: byId('answer-meta'),
   bar: byId('timer-bar'), fill: byId('timer-fill'),
@@ -39,7 +42,7 @@ function stopTimer() {
   timer = null;
 }
 function updateCountdown() {
-  if (revealed) return;
+  if (revealed || session.mode === 'quiz') return;
   ui.meta.textContent = 'Ответ появится через ' + Math.max(1, Math.ceil(remaining / 1000)) + ' с';
   const elapsed = delay - remaining;
   ui.fill.style.width = (100 * elapsed / delay) + '%';
@@ -59,7 +62,7 @@ function reveal() {
   ui.bar.setAttribute('aria-valuenow', '10');
 }
 function runTimer() {
-  if (timer !== null || document.hidden || revealed || session.index >= session.list.length) return;
+  if (timer !== null || document.hidden || revealed || session.mode === 'quiz' || session.index >= session.list.length) return;
   startedAt = performance.now();
   timer = setInterval(() => {
     const now = performance.now();
@@ -80,6 +83,10 @@ function render() {
   ui.random.setAttribute('aria-pressed', String(session.random));
   ui.random.setAttribute('aria-label', session.random ? 'Выключить случайный порядок' : 'Включить случайный порядок');
   ui.random.title = session.random ? 'Вразброс: включено' : 'По порядку';
+  ui.studyMode.setAttribute('aria-pressed', String(session.mode === 'study'));
+  ui.quizMode.setAttribute('aria-pressed', String(session.mode === 'quiz'));
+  ui.studyControls.classList.toggle('hidden', session.mode !== 'study');
+  ui.quizControls.classList.toggle('hidden', session.mode !== 'quiz');
   save();
   if (session.index >= session.list.length) {
     ui.lesson.classList.add('hidden');
@@ -93,6 +100,7 @@ function render() {
   ui.lesson.classList.remove('hidden');
   ui.finish.classList.add('hidden');
   const task = session.list[session.index];
+  ui.title.textContent = session.mode === 'quiz' ? 'Выбери правильный ответ' : 'Сколько получится?';
   ui.label.textContent = session.table === 'all' ? 'Вся таблица умножения' : 'Таблица на ' + session.table;
   ui.progress.textContent = (session.index + 1) + ' из ' + session.list.length;
   ui.left.textContent = String(task.a);
@@ -108,10 +116,35 @@ function render() {
   ui.fill.style.width = '0%';
   ui.bar.setAttribute('aria-valuenow', '0');
   updateCountdown();
-  runTimer();
+  if (session.mode === 'quiz') renderAnswerOptions(task);
+  else runTimer();
 }
-function start(table, random) {
+function renderAnswerOptions(task) {
+  ui.options.replaceChildren();
+  ui.feedback.textContent = '';
+  ui.feedback.classList.remove('retry');
+  for (const value of makeAnswerOptions(task)) {
+    const button = document.createElement('button');
+    button.className = 'answer-option';
+    button.type = 'button';
+    button.textContent = String(value);
+    button.setAttribute('aria-label', String(value));
+    button.addEventListener('click', () => {
+      if (button.disabled) return;
+      if (value === task.answer) {
+        ui.feedback.textContent = 'Верно! Перелистни дальше.';
+        for (const option of ui.options.children) option.disabled = true;
+      } else {
+        ui.feedback.textContent = 'Попробуй ещё раз.';
+        ui.feedback.classList.add('retry');
+      }
+    });
+    ui.options.append(button);
+  }
+}
+function start(table, random, mode = session.mode) {
   session = newSession(table, random);
+  session.mode = mode;
   render();
 }
 function forward() {
@@ -128,6 +161,12 @@ ui.table.addEventListener('change', () => {
   start(ui.table.value === 'all' ? 'all' : Number(ui.table.value), session.random);
 });
 ui.random.addEventListener('click', () => start(session.table, !session.random));
+ui.studyMode.addEventListener('click', () => {
+  if (session.mode !== 'study') { session.mode = 'study'; render(); }
+});
+ui.quizMode.addEventListener('click', () => {
+  if (session.mode !== 'quiz') { session.mode = 'quiz'; render(); }
+});
 ui.back.addEventListener('click', backward);
 ui.next.addEventListener('click', forward);
 ui.answer.addEventListener('click', reveal);
