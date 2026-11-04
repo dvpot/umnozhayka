@@ -84,3 +84,42 @@ export function unpackSession(raw) {
 export function nextTable(table) {
   return Number.isInteger(table) && table >= 1 && table < MAX_FACTOR ? table + 1 : null;
 }
+
+export function newCheck(table, random, rng) {
+  return { ...newSession(table, random, rng), answers: [] };
+}
+
+export function submitCheckAnswer(check, digits) {
+  if (check.index !== check.answers.length || check.index >= check.list.length ||
+      typeof digits !== 'string' || !/^\d{1,3}$/.test(digits)) return false;
+  check.answers.push(Number(digits));
+  return true;
+}
+
+export function advanceCheck(check) {
+  if (check.index >= check.answers.length) return false;
+  check.index++;
+  return true;
+}
+
+export function checkTotals(check) {
+  const correct = check.answers.filter((answer, i) => answer === check.list[i].answer).length;
+  return { correct, incorrect: check.answers.length - correct };
+}
+
+export function packCheck(check) {
+  return JSON.stringify({ session: JSON.parse(packSession(check)), answers: check.answers });
+}
+
+export function unpackCheck(raw) {
+  if (typeof raw !== 'string' || raw.length > 4096) return null;
+  let data;
+  try { data = JSON.parse(raw); } catch { return null; }
+  if (data?.session?.v !== 3 || !Array.isArray(data.answers)) return null;
+  const session = unpackSession(JSON.stringify(data.session));
+  if (!session || session.mode !== 'study') return null;
+  const { answers } = data;
+  if (answers.length < session.index || answers.length > Math.min(session.index + 1, session.list.length) ||
+      !answers.every(value => Number.isInteger(value) && value >= 0 && value <= 999)) return null;
+  return { ...session, answers };
+}

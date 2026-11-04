@@ -29,12 +29,26 @@
       </button>
     </header>
     <main id="swipe-area" class="playground">
+      <div class="activity">
+        <div class="activity-bar">
+          <div class="activity-modes" role="group" aria-label="Вид занятия">
+            <button id="training-mode" class="mode-option" type="button" aria-pressed="true">Тренировка</button>
+            <button id="check-mode" class="mode-option" type="button" aria-pressed="false">Проверка</button>
+          </div>
+          <button id="reset-button" class="mode-option" type="button" aria-label="Сбросить прогресс текущего режима" aria-controls="reset-confirmation" aria-expanded="false">Сбросить</button>
+        </div>
+        <div id="reset-confirmation" class="reset-confirmation hidden" role="group" aria-label="Подтверждение сброса">
+          <span>Начать этот режим заново?</span>
+          <button id="reset-confirm" class="mode-option" type="button">Да, сбросить</button>
+          <button id="reset-cancel" class="mode-option" type="button">Отмена</button>
+        </div>
       <section id="lesson-screen" class="lesson">
         <div class="line"><span id="lesson-label">Вся таблица умножения</span><span id="progress-text" class="counter">1 из 100</span></div>
-        <div class="mode-switch" role="group" aria-label="Режим занятия">
+        <div id="training-options" class="mode-switch" role="group" aria-label="Способ тренировки">
           <button id="study-mode" class="mode-option" type="button" aria-pressed="true">Смотрю пример</button>
           <button id="quiz-mode" class="mode-option" type="button" aria-pressed="false">Выбери ответ</button>
         </div>
+        <p id="check-score" class="check-score hidden" aria-live="polite"></p>
         <div class="card">
           <div id="card-title" class="card-title">Сколько получится?</div>
           <button class="card-arrow card-arrow-left" id="back-button" type="button" aria-label="Предыдущий пример" title="Предыдущий пример">
@@ -51,19 +65,39 @@
             <div id="answer-options" class="answer-options" role="group" aria-label="Варианты ответа"></div>
             <div id="quiz-feedback" class="quiz-feedback" aria-live="polite"></div>
           </div>
+          <div id="check-controls" class="check-controls hidden">
+            <output id="check-answer" class="check-answer" aria-label="Твой ответ" tabindex="-1">?</output>
+            <p id="check-feedback" class="check-feedback" role="status"></p>
+          </div>
           <button class="card-arrow card-arrow-right" id="next-button" type="button" aria-label="Следующий пример" title="Следующий пример">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 5 7 7-7 7"/></svg>
           </button>
         </div>
+        <div id="check-keypad" class="check-keypad hidden" role="group" aria-label="Цифровая клавиатура">
+          <button type="button" data-digit="1">1</button>
+          <button type="button" data-digit="2">2</button>
+          <button type="button" data-digit="3">3</button>
+          <button type="button" data-digit="4">4</button>
+          <button type="button" data-digit="5">5</button>
+          <button type="button" data-digit="6">6</button>
+          <button type="button" data-digit="7">7</button>
+          <button type="button" data-digit="8">8</button>
+          <button type="button" data-digit="9">9</button>
+          <button type="button" data-digit="0" class="zero-key">0</button>
+          <button id="delete-digit" type="button" aria-label="Удалить последнюю цифру">⌫</button>
+          <button id="submit-check" class="primary submit-check" type="button">Проверить</button>
+        </div>
       </section>
       <section id="finish-screen" class="finish hidden" aria-label="Все примеры пройдены">
         <div class="star" aria-hidden="true">★</div>
-        <h1>Отличная работа!</h1>
+        <h1 id="finish-title" tabindex="-1">Отличная работа!</h1>
         <p id="finish-description"></p>
+        <p id="finish-score" class="check-score hidden"></p>
         <button id="again-button" class="primary" type="button">Повторить заново ↻</button>
         <button id="next-table-button" class="secondary" type="button">Следующая таблица →</button>
         <button id="finish-back-button" class="link" type="button">← К последнему примеру</button>
       </section>
+      </div>
     </main>
   </div>
 </body>

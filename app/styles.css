@@ -32,3 +32,44 @@ button:disabled{opacity:.32;cursor:default}button:not(:disabled):active{filter:b
 @media(max-width:350px){.mode-switch{gap:5px}.mode-option{padding:0 9px;font-size:13px}.answer-options{gap:5px}.answer-option{min-height:56px}}
 @media(max-height:670px){.playground{justify-content:flex-start}.card{padding-top:18px;padding-bottom:18px}.equation{font-size:clamp(42px,10vh,75px)}.answer{min-height:83px;font-size:72px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+
+.activity { width: 100%; max-width: 550px; }
+.activity-bar, .activity-modes, .reset-confirmation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.activity-bar { justify-content: space-between; margin-bottom: 12px; }
+.activity-bar .mode-option, .reset-confirmation .mode-option { min-height: 44px; }
+.reset-confirmation { padding: 8px; margin-bottom: 12px; background: #fff; border-radius: 13px; }
+.reset-confirmation span { flex-basis: 100%; font-weight: 800; }
+.check-score { margin: 0 0 10px; color: #4f5188; text-align: center; font-weight: 850; }
+.checking .card { padding-block: 14px; }
+.checking .equation { font-size: clamp(42px, 12vw, 68px); }
+.checking .equals { font-size: 28px; }
+.check-answer {
+  display: block;
+  color: #5848b7;
+  font-size: clamp(37px, 12vw, 64px);
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.check-feedback { margin: 4px 0 0; font-weight: 800; }
+.check-feedback:empty { margin: 0; }
+.check-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: min(340px, 100%);
+  margin: 15px auto 0;
+}
+.check-keypad button { min-height: 44px; font-size: 20px; touch-action: manipulation; }
+.check-keypad .zero-key { grid-column: 2; }
+.check-keypad .submit-check { grid-column: 1 / -1; font-size: 16px; }
+
+@media (max-width: 350px) {
+  .card-title, .answer-meta { white-space: normal; }
+  .equation, .checking .equation { font-size: 42px; }
+}
