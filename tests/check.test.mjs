@@ -2,18 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as engine from '../app/engine.js';
 
-test('Оценка принимает число один раз и считает верные и неверные ответы', () => {
+test('Оценка позволяет исправить неверное число и фиксирует последний ответ', () => {
   const check = engine.newCheck(10);
   assert.equal(engine.submitCheckAnswer(check, ''), false);
   assert.equal(engine.submitCheckAnswer(check, '1e2'), false);
   assert.equal(engine.submitCheckAnswer(check, '1000'), false);
   assert.equal(engine.advanceCheck(check), false);
   assert.equal(engine.submitCheckAnswer(check, '0'), true);
-  assert.equal(engine.submitCheckAnswer(check, '10'), false);
+  assert.deepEqual(engine.checkTotals(check), { correct: 0, incorrect: 1 });
+  assert.equal(engine.submitCheckAnswer(check, '10'), true);
+  assert.equal(engine.submitCheckAnswer(check, '9'), false);
   assert.equal(engine.advanceCheck(check), true);
   assert.equal(engine.advanceCheck(check), false);
   assert.equal(engine.submitCheckAnswer(check, '20'), true);
-  assert.deepEqual(engine.checkTotals(check), { correct: 1, incorrect: 1 });
+  assert.deepEqual(engine.checkTotals(check), { correct: 2, incorrect: 0 });
 });
 
 test('Проверка завершается после всех ответов и принимает 100', () => {
@@ -33,7 +35,8 @@ test('После перезагрузки сохраняются порядок,
   engine.submitCheckAnswer(check, '999');
   const restored = engine.unpackCheck(engine.packCheck(check));
   assert.deepEqual(restored, check);
-  assert.equal(engine.submitCheckAnswer(restored, '1'), false);
+  assert.equal(engine.submitCheckAnswer(restored, '2'), true);
+  assert.equal(engine.submitCheckAnswer(restored, '2'), false);
   assert.equal(engine.advanceCheck(restored), true);
 });
 
