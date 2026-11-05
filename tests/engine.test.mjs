@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_FACTOR, makeExercises, makeAnswerOptions, newSession, packSession, unpackSession, nextTable } from '../app/engine.js';
+import { MAX_FACTOR, makeExercises, makeAnswerOptions, newSession, packSession, unpackSession, nextTable, chooseQuizAnswer, quizTotals, newCheck, submitCheckAnswer, advanceCheck, checkTotals, packCheck, unpackCheck } from '../app/engine.js';
 
 test('Все: 100 уникальных примеров от 1×1 до 10×10', () => {
   const list = makeExercises();
@@ -102,4 +102,30 @@ test('Следующая таблица до ×10 и защита парамет
   assert.equal(nextTable('all'), null);
   assert.throws(() => makeExercises(11), RangeError);
   assert.throws(() => makeExercises(2,true,() => 1), RangeError);
+});
+
+test('Результат выбора ответа сохраняет ошибки по примеру и не пускает дальше без верного ответа', () => {
+  const s = newSession(2);
+  s.mode = 'quiz';
+  assert.equal(chooseQuizAnswer(s, 17), 'incorrect');
+  assert.equal(chooseQuizAnswer(s, 17), null);
+  assert.equal(quizTotals(s).incorrect, 1);
+  assert.equal(s.quizResults[0].solved, false);
+  assert.equal(chooseQuizAnswer(s, 2), 'correct');
+  assert.equal(chooseQuizAnswer(s, 4), null);
+  assert.deepEqual(quizTotals(s), { correct: 1, incorrect: 1 });
+  assert.deepEqual(unpackSession(packSession(s)), s);
+});
+
+test('Проверка позволяет исправить неверный ответ и продолжить с неверным результатом', () => {
+  const s = newCheck(2);
+  assert.equal(submitCheckAnswer(s, '3'), true);
+  assert.deepEqual(checkTotals(s), { correct: 0, incorrect: 1 });
+  assert.equal(submitCheckAnswer(s, '2'), true);
+  assert.deepEqual(checkTotals(s), { correct: 1, incorrect: 0 });
+  assert.equal(advanceCheck(s), true);
+  assert.equal(submitCheckAnswer(s, '5'), true);
+  assert.equal(advanceCheck(s), true);
+  assert.equal(checkTotals(s).incorrect, 1);
+  assert.deepEqual(unpackCheck(packCheck(s)), s);
 });
