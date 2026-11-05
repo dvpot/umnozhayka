@@ -114,7 +114,7 @@ function renderAnswerOptions(task) {
   ui.options.replaceChildren();
   const result = session.quizResults[session.index];
   ui.quizStatus.textContent = result.solved ? 'Верно' : result.mistakes ? 'Неверно, попробуй другой ответ' : '';
-  for (const value of makeAnswerOptions(task)) {
+  for (const value of makeAnswerOptions(task, Math.random, result.eliminated)) {
     const button = document.createElement('button');
     button.className = 'answer-option';
     button.type = 'button';

@@ -21,25 +21,29 @@ export function makeExercises(table = 'all', random = false, rng = Math.random) 
   return list;
 }
 
-export function makeAnswerOptions(task, rng = Math.random) {
+export function makeAnswerOptions(task, rng = Math.random, eliminated = []) {
   if (!task || !Number.isInteger(task.a) || task.a < 1 || task.a > MAX_FACTOR ||
       !Number.isInteger(task.b) || task.b < 1 || task.b > MAX_FACTOR || task.answer !== task.a * task.b) {
     throw new RangeError('Некорректный пример');
   }
   if (typeof rng !== 'function') throw new TypeError('Генератор случайных чисел должен быть функцией');
+  if (!Array.isArray(eliminated) || eliminated.length > 2 || new Set(eliminated).size !== eliminated.length ||
+      eliminated.some(value => !Number.isInteger(value) || value < 1 || value > 100 || value === task.answer)) {
+    throw new RangeError('Некорректные исключённые варианты');
+  }
   const values = new Set();
   for (let a = 1; a <= MAX_FACTOR; a++) for (let b = 1; b <= MAX_FACTOR; b++) values.add(a * b);
   const nearby = new Set();
   for (const a of [task.a - 1, task.a + 1]) if (a >= 1 && a <= MAX_FACTOR) nearby.add(a * task.b);
   for (const b of [task.b - 1, task.b + 1]) if (b >= 1 && b <= MAX_FACTOR) nearby.add(task.a * b);
-  nearby.delete(task.answer);
-  const distractors = [...nearby];
+  const used = new Set([task.answer, ...eliminated]);
+  const distractors = [...nearby].filter(value => !used.has(value));
   for (const value of values) {
-    if (distractors.length >= 2) break;
-    if (value !== task.answer && !nearby.has(value)) distractors.push(value);
+    if (distractors.length >= 2 - eliminated.length) break;
+    if (!used.has(value) && !nearby.has(value)) distractors.push(value);
   }
-  const options = [task.answer];
-  for (let i = 0; i < 2; i++) {
+  const options = [task.answer, ...eliminated];
+  for (let i = 0; i < 2 - eliminated.length; i++) {
     const sample = rng();
     if (!(sample >= 0 && sample < 1)) throw new RangeError('Случайное число должно быть в [0,1)');
     const index = i + Math.floor(sample * (distractors.length - i));

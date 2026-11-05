@@ -51,6 +51,15 @@ test('Дистракторы используют соседние множит�
   assert.ok(options.includes(task.answer));
   assert.ok(options.every(value => [15, 16, 20, 24, 25].includes(value)));
 });
+test('Ошибочно выбранные варианты остаются среди трёх вариантов', () => {
+  const task = makeExercises(2)[0];
+  const eliminated = [17, 19];
+  const options = makeAnswerOptions(task, () => 0.5, eliminated);
+  assert.equal(options.length, 3);
+  assert.equal(new Set(options).size, 3);
+  assert.ok(options.includes(task.answer));
+  assert.ok(eliminated.every(value => options.includes(value)));
+});
 test('Восстановление случайного порядка и индекса после закрытия', () => {
   const s = newSession(10, true, () => 0);
   s.index = 7;
