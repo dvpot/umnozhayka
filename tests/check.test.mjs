@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as engine from '../app/engine.js';
 
-test('Оценка позволяет исправить неверное число и фиксирует последний ответ', () => {
+test('Оценка позволяет исправить неверное число и сохраняет счётчик попыток', () => {
   const check = engine.newCheck(10);
   assert.equal(engine.submitCheckAnswer(check, ''), false);
   assert.equal(engine.submitCheckAnswer(check, '1e2'), false);
@@ -15,7 +15,7 @@ test('Оценка позволяет исправить неверное чис
   assert.equal(engine.advanceCheck(check), true);
   assert.equal(engine.advanceCheck(check), false);
   assert.equal(engine.submitCheckAnswer(check, '20'), true);
-  assert.deepEqual(engine.checkTotals(check), { correct: 2, incorrect: 0 });
+  assert.deepEqual(engine.checkTotals(check), { correct: 2, incorrect: 1 });
 });
 
 test('Проверка завершается после всех ответов и принимает 100', () => {
@@ -38,6 +38,31 @@ test('После перезагрузки сохраняются порядок,
   assert.equal(engine.submitCheckAnswer(restored, '2'), true);
   assert.equal(engine.submitCheckAnswer(restored, '2'), false);
   assert.equal(engine.advanceCheck(restored), true);
+});
+
+test('Статистика сохраняет неверные попытки после исправления и перезагрузки', () => {
+  const check = engine.newCheck(2);
+  engine.submitCheckAnswer(check, '3');
+  engine.submitCheckAnswer(check, '5');
+  assert.deepEqual(engine.checkTotals(check), { correct: 0, incorrect: 2 });
+  engine.submitCheckAnswer(check, '2');
+  assert.deepEqual(engine.checkTotals(check), { correct: 1, incorrect: 2 });
+  const restored = engine.unpackCheck(engine.packCheck(check));
+  assert.deepEqual(engine.checkTotals(restored), { correct: 1, incorrect: 2 });
+  assert.deepEqual(restored.mistakes, [2]);
+});
+
+test('Формат проверки v4 мигрирует, сохраняя доступные результаты', () => {
+  const check = engine.newCheck(2);
+  engine.submitCheckAnswer(check, '3');
+  const packed = JSON.parse(engine.packCheck(check));
+  packed.v = 4;
+  delete packed.mistakes;
+  packed.session.v = 4;
+  packed.session.quizResults = packed.session.quizResults.map(({ options, ...result }) => result);
+  const restored = engine.unpackCheck(JSON.stringify(packed));
+  assert.ok(restored);
+  assert.equal(engine.checkTotals(restored).incorrect, 1);
 });
 
 test('Повреждённое сохранение не восстанавливает ложный результат', () => {
