@@ -12,8 +12,13 @@
   <script type="module" src="./app.js"></script>
 </head>
 <body>
-  <div class="shell">
-    <header class="header" aria-label="Настройки урока">
+  <div id="app-loading" class="app-loading" role="status" aria-live="polite">
+    <div class="loading-mark" aria-hidden="true">×</div>
+    <span>Готовим примеры…</span>
+    <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+  </div>
+  <div class="shell" aria-hidden="true">
+    <header class="header" aria-label="Настройки занятия">
       <label class="select-holder">
         <span class="select-caption">Учим</span>
         <select id="table-select" aria-label="Какую таблицу учим">
@@ -24,81 +29,79 @@
           <option value="10">×10</option>
         </select>
       </label>
+      <label class="select-holder activity-holder">
+        <span class="select-caption sr-only">Режим</span>
+        <select id="activity-select" aria-label="Режим занятия">
+          <option value="study">Тренировка</option>
+          <option value="quiz">Выбери ответ</option>
+          <option value="check">Проверка</option>
+        </select>
+      </label>
       <button id="random-mode" class="shuffle-button" type="button" aria-label="Включить случайный порядок" aria-pressed="false" title="Перемешать примеры">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3c5 0 6 10 11 10h4"/><path d="m17 13 4 4-4 4"/><path d="M3 17h3c2.1 0 3.5-2.1 4.7-4.3"/><path d="M14 7.8C14.9 7.3 15.9 7 17 7h4"/><path d="m17 3 4 4-4 4"/></svg>
       </button>
+      <button id="settings-button" class="settings-button" type="button" aria-label="Настройки" aria-haspopup="dialog" aria-expanded="false">⋯</button>
     </header>
-    <main id="swipe-area" class="playground">
+    <main id="playground" class="playground">
       <div class="activity">
-        <div class="activity-bar">
-          <div class="activity-modes" role="group" aria-label="Вид занятия">
-            <button id="training-mode" class="mode-option" type="button" aria-pressed="true">Тренировка</button>
-            <button id="check-mode" class="mode-option" type="button" aria-pressed="false">Проверка</button>
+        <section id="lesson-screen" class="lesson" aria-label="Пример">
+          <div class="card" id="example-card">
+            <span id="progress-text" class="counter">1 из 100</span>
+            <button class="card-arrow card-arrow-left" id="back-button" type="button" aria-label="Предыдущий пример" title="Предыдущий пример">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 5-7 7 7 7"/></svg>
+            </button>
+            <div class="equation"><span id="left-number">1</span><span class="multiply">×</span><span id="right-number">1</span></div>
+            <div class="equals">=</div>
+            <div id="study-controls" class="card-stage study-controls">
+              <button id="answer" class="answer" type="button" aria-label="Показать ответ" title="Нажми, чтобы узнать ответ">?</button>
+              <div role="progressbar" id="timer-bar" aria-label="Время до ответа" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" class="timer"><div id="timer-fill" class="timer-fill"></div></div>
+            </div>
+            <div id="quiz-controls" class="card-stage quiz-controls hidden">
+              <div id="answer-options" class="answer-options" role="group" aria-label="Варианты ответа"></div>
+              <span id="quiz-status" class="sr-only" aria-live="polite"></span>
+            </div>
+            <div id="check-controls" class="card-stage check-controls hidden">
+              <output id="check-answer" class="check-answer" aria-label="Твой ответ" tabindex="-1">?</output>
+            </div>
+            <button class="card-arrow card-arrow-right" id="next-button" type="button" aria-label="Следующий пример" title="Следующий пример">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 5 7 7-7 7"/></svg>
+            </button>
           </div>
-          <button id="reset-button" class="mode-option" type="button" aria-label="Сбросить прогресс текущего режима" aria-controls="reset-confirmation" aria-expanded="false">Сбросить</button>
-        </div>
-        <div id="reset-confirmation" class="reset-confirmation hidden" role="group" aria-label="Подтверждение сброса">
-          <span>Начать этот режим заново?</span>
-          <button id="reset-confirm" class="mode-option" type="button">Да, сбросить</button>
-          <button id="reset-cancel" class="mode-option" type="button">Отмена</button>
-        </div>
-      <section id="lesson-screen" class="lesson">
-        <div class="line"><span id="lesson-label">Вся таблица умножения</span><span id="progress-text" class="counter">1 из 100</span></div>
-        <div id="training-options" class="mode-switch" role="group" aria-label="Способ тренировки">
-          <button id="study-mode" class="mode-option" type="button" aria-pressed="true">Смотрю пример</button>
-          <button id="quiz-mode" class="mode-option" type="button" aria-pressed="false">Выбери ответ</button>
-        </div>
-        <p id="check-score" class="check-score hidden" aria-live="polite"></p>
-        <div class="card">
-          <div id="card-title" class="card-title">Сколько получится?</div>
-          <button class="card-arrow card-arrow-left" id="back-button" type="button" aria-label="Предыдущий пример" title="Предыдущий пример">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 5-7 7 7 7"/></svg>
-          </button>
-          <div class="equation"><span id="left-number">1</span><span class="multiply">×</span><span id="right-number">1</span></div>
-          <div class="equals">=</div>
-          <div id="study-controls" class="study-controls">
-            <button id="answer" class="answer" type="button" aria-label="Показать ответ" title="Нажми, чтобы узнать ответ">?</button>
-            <div id="answer-meta" class="answer-meta">Ответ появится через 10 с</div>
-            <div role="progressbar" id="timer-bar" aria-label="Время до ответа" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" class="timer"><div id="timer-fill" class="timer-fill"></div></div>
+          <div id="progress-tools" class="progress-tools hidden">
+            <p id="check-score" class="check-score" aria-live="polite">Верно: 0 · Неверно: 0</p>
+            <button id="reset-button" class="reset-button" type="button" aria-label="Сбросить прогресс текущего режима" aria-controls="reset-confirmation" aria-expanded="false">Сбросить</button>
           </div>
-          <div id="quiz-controls" class="quiz-controls hidden">
-            <div id="answer-options" class="answer-options" role="group" aria-label="Варианты ответа"></div>
-            <div id="quiz-feedback" class="quiz-feedback" aria-live="polite"></div>
+          <div id="reset-confirmation" class="reset-confirmation hidden" role="group" aria-label="Подтверждение сброса">
+            <span>Начать этот режим заново?</span>
+            <button id="reset-confirm" class="mode-option" type="button">Да, сбросить</button>
+            <button id="reset-cancel" class="mode-option" type="button">Отмена</button>
           </div>
-          <div id="check-controls" class="check-controls hidden">
-            <output id="check-answer" class="check-answer" aria-label="Твой ответ" tabindex="-1">?</output>
-            <p id="check-feedback" class="check-feedback" role="status"></p>
+          <div id="check-keypad" class="check-keypad hidden" role="group" aria-label="Цифровая клавиатура">
+            <button type="button" data-digit="1">1</button><button type="button" data-digit="2">2</button><button type="button" data-digit="3">3</button>
+            <button type="button" data-digit="4">4</button><button type="button" data-digit="5">5</button><button type="button" data-digit="6">6</button>
+            <button type="button" data-digit="7">7</button><button type="button" data-digit="8">8</button><button type="button" data-digit="9">9</button>
+            <button type="button" data-digit="0" class="zero-key">0</button>
+            <button id="delete-digit" type="button" aria-label="Удалить последнюю цифру">⌫</button>
+            <button id="submit-check" class="primary submit-check" type="button">Проверить</button>
           </div>
-          <button class="card-arrow card-arrow-right" id="next-button" type="button" aria-label="Следующий пример" title="Следующий пример">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 5 7 7-7 7"/></svg>
-          </button>
-        </div>
-        <div id="check-keypad" class="check-keypad hidden" role="group" aria-label="Цифровая клавиатура">
-          <button type="button" data-digit="1">1</button>
-          <button type="button" data-digit="2">2</button>
-          <button type="button" data-digit="3">3</button>
-          <button type="button" data-digit="4">4</button>
-          <button type="button" data-digit="5">5</button>
-          <button type="button" data-digit="6">6</button>
-          <button type="button" data-digit="7">7</button>
-          <button type="button" data-digit="8">8</button>
-          <button type="button" data-digit="9">9</button>
-          <button type="button" data-digit="0" class="zero-key">0</button>
-          <button id="delete-digit" type="button" aria-label="Удалить последнюю цифру">⌫</button>
-          <button id="submit-check" class="primary submit-check" type="button">Проверить</button>
-        </div>
-      </section>
-      <section id="finish-screen" class="finish hidden" aria-label="Все примеры пройдены">
-        <div class="star" aria-hidden="true">★</div>
-        <h1 id="finish-title" tabindex="-1">Отличная работа!</h1>
-        <p id="finish-description"></p>
-        <p id="finish-score" class="check-score hidden"></p>
-        <button id="again-button" class="primary" type="button">Повторить заново ↻</button>
-        <button id="next-table-button" class="secondary" type="button">Следующая таблица →</button>
-        <button id="finish-back-button" class="link" type="button">← К последнему примеру</button>
-      </section>
+        </section>
+        <section id="finish-screen" class="finish hidden" aria-label="Все примеры пройдены">
+          <div class="star" aria-hidden="true">★</div>
+          <h1 id="finish-title" tabindex="-1">Отличная работа!</h1>
+          <p id="finish-description"></p>
+          <p id="finish-score" class="check-score hidden"></p>
+          <button id="again-button" class="primary" type="button">Повторить заново ↻</button>
+          <button id="next-table-button" class="secondary" type="button">Следующая таблица →</button>
+          <button id="finish-back-button" class="link" type="button">← К последнему примеру</button>
+        </section>
       </div>
     </main>
+  </div>
+  <div id="settings-dialog" class="settings-backdrop hidden" role="presentation">
+    <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="settings-heading"><h2 id="settings-title">Настройки</h2><button id="settings-close" class="settings-close" type="button" aria-label="Закрыть настройки">×</button></div>
+      <label class="voice-setting"><span>Озвучивать примеры и ответы</span><input id="voice-toggle" type="checkbox"></label>
+    </section>
   </div>
 </body>
 </html>
