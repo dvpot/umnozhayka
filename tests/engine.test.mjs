@@ -116,8 +116,9 @@ test('Следующая таблица до ×10 и защита парамет
 test('Результат выбора ответа сохраняет ошибки по примеру и не пускает дальше без верного ответа', () => {
   const s = newSession(2);
   s.mode = 'quiz';
-  assert.equal(chooseQuizAnswer(s, 17), 'incorrect');
-  assert.equal(chooseQuizAnswer(s, 17), null);
+  const wrong = s.quizResults[0].options.find(value => value !== s.list[0].answer);
+  assert.equal(chooseQuizAnswer(s, wrong), 'incorrect');
+  assert.equal(chooseQuizAnswer(s, wrong), null);
   assert.equal(quizTotals(s).incorrect, 1);
   assert.equal(s.quizResults[0].solved, false);
   assert.equal(chooseQuizAnswer(s, 2), 'correct');
@@ -126,15 +127,26 @@ test('Результат выбора ответа сохраняет ошибк
   assert.deepEqual(unpackSession(packSession(s)), s);
 });
 
+test('Варианты остаются на своих местах после ошибки и перезагрузки', () => {
+  const s = newSession(2, false, () => 0.5);
+  s.mode = 'quiz';
+  const options = [...s.quizResults[0].options];
+  const wrong = options.find(value => value !== s.list[0].answer);
+  assert.equal(chooseQuizAnswer(s, wrong), 'incorrect');
+  assert.deepEqual(s.quizResults[0].options, options);
+  assert.deepEqual(unpackSession(packSession(s)).quizResults[0].options, options);
+});
+
 test('Проверка позволяет исправить неверный ответ и продолжить с неверным результатом', () => {
   const s = newCheck(2);
   assert.equal(submitCheckAnswer(s, '3'), true);
   assert.deepEqual(checkTotals(s), { correct: 0, incorrect: 1 });
   assert.equal(submitCheckAnswer(s, '2'), true);
-  assert.deepEqual(checkTotals(s), { correct: 1, incorrect: 0 });
+  assert.deepEqual(checkTotals(s), { correct: 1, incorrect: 1 });
+  assert.equal(s.mistakes[0], 1);
   assert.equal(advanceCheck(s), true);
   assert.equal(submitCheckAnswer(s, '5'), true);
   assert.equal(advanceCheck(s), true);
-  assert.equal(checkTotals(s).incorrect, 1);
+  assert.equal(checkTotals(s).incorrect, 2);
   assert.deepEqual(unpackCheck(packCheck(s)), s);
 });

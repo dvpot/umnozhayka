@@ -1,5 +1,5 @@
 import {
-  advanceCheck, checkTotals, chooseQuizAnswer, makeAnswerOptions, newCheck, newSession, nextTable,
+  advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newSession, nextTable,
   packCheck, packSession, quizTotals, submitCheckAnswer, unpackCheck, unpackSession
 } from './engine.js';
 
@@ -17,13 +17,15 @@ const ui = {
   finishText: byId('finish-description'), nextTable: byId('next-table-button'), finishTitle: byId('finish-title'),
   finishScore: byId('finish-score'), finishBack: byId('finish-back-button'), card: byId('example-card'),
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
-  voice: byId('voice-toggle'), loading: byId('app-loading'), shell: document.querySelector('.shell')
+  voice: byId('voice-toggle'), voiceSelect: byId('voice-select'), voiceStatus: byId('voice-status'),
+  loading: byId('app-loading'), shell: document.querySelector('.shell')
 };
 const delay = 10000;
 const storageKey = 'umnozhayka.session.v1';
 const checkKey = 'umnozhayka.check.v1';
 const activityKey = 'umnozhayka.activity.v1';
 const voiceKey = 'umnozhayka.voice.v1';
+const voiceChoiceKey = 'umnozhayka.voice-choice.v1';
 function load(key) {
   try { return window.localStorage.getItem(key); } catch { return null; }
 }
@@ -37,6 +39,8 @@ let startedAt = 0;
 let remaining = delay;
 let revealed = false;
 let voiceEnabled = load(voiceKey) === 'true';
+let selectedVoiceURI = load(voiceChoiceKey) || '';
+let voices = [];
 let spokenTask = '';
 
 try {
@@ -49,8 +53,10 @@ try {
 function save() {
   try {
     window.localStorage.setItem(checking ? checkKey : storageKey, checking ? packCheck(session) : packSession(session));
+    window.localStorage.removeItem(checking ? storageKey : checkKey);
     window.localStorage.setItem(activityKey, checking ? 'check' : 'training');
     window.localStorage.setItem(voiceKey, String(voiceEnabled));
+    window.localStorage.setItem(voiceChoiceKey, selectedVoiceURI);
   } catch { /* Хранилище может быть отключено. */ }
 }
 function stopTimer() {
@@ -59,11 +65,42 @@ function stopTimer() {
 }
 function speak(text) {
   if (!voiceEnabled || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
-  window.speechSynthesis.cancel();
+  window.speechSynthesis.cancel?.();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'ru-RU';
   utterance.rate = 0.9;
+  utterance.voice = voices.find(voice => voice.voiceURI === selectedVoiceURI) || null;
+  utterance.onerror = () => { ui.voiceStatus.textContent = 'Не удалось озвучить. Проверь голосовые службы устройства.'; };
   window.speechSynthesis.speak(utterance);
+}
+function updateVoices() {
+  if (!('speechSynthesis' in window) || typeof window.speechSynthesis.speak !== 'function' ||
+      typeof window.SpeechSynthesisUtterance !== 'function') {
+    ui.voice.disabled = true;
+    ui.voiceSelect.disabled = true;
+    ui.voiceStatus.textContent = 'Это приложение не поддерживает озвучивание в данном браузере.';
+    return;
+  }
+  try {
+    voices = (typeof window.speechSynthesis.getVoices === 'function' ? window.speechSynthesis.getVoices() : [])
+      .filter(voice => voice.lang?.toLowerCase().startsWith('ru'));
+  } catch { voices = []; }
+  const previous = selectedVoiceURI;
+  ui.voiceSelect.replaceChildren(new Option('Автоматически', ''));
+  for (const voice of voices) {
+    ui.voiceSelect.add(new Option(`${voice.name}${voice.default ? ' · по умолчанию' : ''}`, voice.voiceURI));
+  }
+  if (previous && voices.some(voice => voice.voiceURI === previous)) ui.voiceSelect.value = previous;
+  else { selectedVoiceURI = ''; ui.voiceSelect.value = ''; }
+  ui.voiceSelect.disabled = voices.length === 0;
+  ui.voiceStatus.textContent = voices.length
+    ? 'Голоса предоставляет устройство; список может меняться между телефонами.'
+    : 'Русские голоса не найдены. Проверь синтез речи в настройках устройства.';
+}
+if ('speechSynthesis' in window) {
+  updateVoices();
+  window.speechSynthesis.addEventListener?.('voiceschanged', updateVoices);
+  window.setTimeout(updateVoices, 500);
 }
 function announceTask(task) {
   const key = [checking ? 'check' : session.mode, task.id].join(':');
@@ -81,6 +118,7 @@ function reveal() {
   if (checking || revealed || document.hidden || session.index >= session.list.length) return;
   stopTimer();
   revealed = true;
+  ui.answer.disabled = true;
   const answer = String(session.list[session.index].answer);
   ui.answer.textContent = answer;
   ui.answer.classList.add('revealed');
@@ -114,7 +152,7 @@ function renderAnswerOptions(task) {
   ui.options.replaceChildren();
   const result = session.quizResults[session.index];
   ui.quizStatus.textContent = result.solved ? 'Верно' : result.mistakes ? 'Неверно, попробуй другой ответ' : '';
-  for (const value of makeAnswerOptions(task, Math.random, result.eliminated)) {
+  for (const value of result.options) {
     const button = document.createElement('button');
     button.className = 'answer-option';
     button.type = 'button';
@@ -126,9 +164,8 @@ function renderAnswerOptions(task) {
     button.addEventListener('click', () => {
       if (button.disabled) return;
       const outcome = chooseQuizAnswer(session, value);
-      if (outcome === 'correct') {
-        speak(String(task.answer));
-      }
+      if (outcome === 'correct') speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
+      else if (outcome === 'incorrect') speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Выбери другой ответ.', 'Ничего, попробуй снова.']));
       render();
     });
     ui.options.append(button);
@@ -136,8 +173,9 @@ function renderAnswerOptions(task) {
 }
 function renderDraft(submitted) {
   ui.checkAnswer.textContent = draft || '?';
-  ui.checkAnswer.classList.toggle('incorrect', submitted !== undefined && submitted !== session.list[session.index].answer);
-  ui.checkAnswer.classList.toggle('correct', submitted !== undefined && submitted === session.list[session.index].answer);
+  const unchanged = submitted !== undefined && draft !== '' && Number(draft) === submitted;
+  ui.checkAnswer.classList.toggle('incorrect', unchanged && submitted !== session.list[session.index].answer);
+  ui.checkAnswer.classList.toggle('correct', unchanged && submitted === session.list[session.index].answer);
   ui.submit.disabled = draft === '';
   ui.deleteDigit.disabled = draft === '';
 }
@@ -161,6 +199,7 @@ function render() {
   ui.lesson.classList.toggle('checking', checking);
   ui.lesson.classList.toggle('quiz', !checking && session.mode === 'quiz');
   ui.checkControls.classList.toggle('hidden', !checking);
+  ui.keypad.classList.toggle('hidden', !checking);
   ui.studyControls.classList.toggle('hidden', checking || session.mode !== 'study');
   ui.quizControls.classList.toggle('hidden', checking || session.mode !== 'quiz');
   ui.progressTools.classList.toggle('hidden', !(checking || session.mode === 'quiz'));
@@ -186,7 +225,7 @@ function render() {
   ui.left.textContent = String(task.a);
   ui.right.textContent = String(task.b);
   ui.back.classList.toggle('hidden', checking);
-  ui.back.disabled = checking || session.index === 0;
+  ui.back.disabled = checking || session.index === 0 || (session.mode === 'quiz' && !session.quizResults[session.index].solved);
   const result = checking ? null : session.quizResults[session.index];
   const nextLabel = session.index === session.list.length - 1
     ? (checking ? 'Показать итог' : 'Завершить упражнения') : 'Следующий пример';
@@ -200,6 +239,7 @@ function render() {
   remaining = delay;
   revealed = false;
   ui.answer.classList.remove('revealed');
+  ui.answer.disabled = false;
   ui.answer.textContent = '?';
   ui.answer.setAttribute('aria-label', 'Показать ответ');
   ui.answer.title = 'Нажми, чтобы узнать ответ';
@@ -213,12 +253,13 @@ function showReset(open) {
   ui.reset.setAttribute('aria-expanded', String(open));
 }
 function selectActivity(value) {
-  if (value === 'check') {
-    if (!check) check = newCheck(training.table, training.random);
-    checking = true;
+  const { table, random } = session;
+  checking = value === 'check';
+  if (checking) {
+    check = newCheck(table, random);
     session = check;
   } else {
-    checking = false;
+    training = newSession(table, random);
     training.mode = value;
     session = training;
   }
@@ -299,16 +340,24 @@ ui.voice.addEventListener('change', () => {
   }
   save();
 });
+ui.voiceSelect.addEventListener('change', () => {
+  selectedVoiceURI = ui.voiceSelect.value;
+  save();
+});
 function editDraft(key) {
   if (!checking || session.index >= session.list.length || session.index > session.answers.length) return;
   if (key === 'Backspace') draft = draft.slice(0, -1);
   else if (/^\d$/.test(key) && draft.length < 3) draft += key;
   renderDraft(session.answers[session.index]);
 }
+function randomPhrase(phrases) {
+  return phrases[Math.floor(Math.random() * phrases.length)];
+}
 function submit() {
   if (!checking || !submitCheckAnswer(session, draft)) return;
   const task = session.list[session.index];
-  if (Number(draft) === task.answer) speak(String(task.answer));
+  if (Number(draft) === task.answer) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
+  else speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Можно исправить.', 'Ничего, попробуй снова.']));
   render();
   if (session.answers[session.index] === task.answer) ui.next.focus();
 }

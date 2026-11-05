@@ -62,11 +62,11 @@ export function makeAnswerOptions(task, rng = Math.random, eliminated = []) {
 export function newSession(table = 'all', random = false, rng = Math.random) {
   const list = makeExercises(table, random, rng);
   return { table, random, mode: 'study', index: 0, list,
-    quizResults: list.map(() => ({ mistakes: 0, solved: false, eliminated: [] })) };
+    quizResults: list.map(task => ({ mistakes: 0, solved: false, eliminated: [], options: makeAnswerOptions(task, rng) })) };
 }
 
 export function packSession(s) {
-  return JSON.stringify({ v: 4, table: s.table, random: s.random, mode: s.mode, index: s.index,
+  return JSON.stringify({ v: 5, table: s.table, random: s.random, mode: s.mode, index: s.index,
     ids: s.list.map(x => x.id), quizResults: s.quizResults });
 }
 
@@ -79,20 +79,28 @@ export function unpackSession(raw) {
   try { ordered = makeExercises(data.table); } catch { return null; }
   // После обновления ×1…×9 -> ×1…×10 сохраняем режим, начинаем полный новый цикл.
   if (data.v === 1) return newSession(data.table, data.random);
-  if (![2, 3, 4].includes(data.v) || !Array.isArray(data.ids) || data.ids.length !== ordered.length ||
+  if (![2, 3, 4, 5].includes(data.v) || !Array.isArray(data.ids) || data.ids.length !== ordered.length ||
       data.index < 0 || data.index > ordered.length || new Set(data.ids).size !== ordered.length) return null;
   if (data.v >= 3 && data.mode !== 'study' && data.mode !== 'quiz') return null;
   const lookup = new Map(ordered.map(x => [x.id, x]));
   if (!data.ids.every(id => typeof id === 'string' && lookup.has(id))) return null;
   if (!data.random && !data.ids.every((id, i) => id === ordered[i].id)) return null;
-  let quizResults = ordered.map(() => ({ mistakes: 0, solved: false, eliminated: [] }));
-  if (data.v === 4) {
+  let quizResults = ordered.map(task => ({ mistakes: 0, solved: false, eliminated: [], options: makeAnswerOptions(task) }));
+  if (data.v >= 4) {
     if (!Array.isArray(data.quizResults) || data.quizResults.length !== ordered.length ||
         !data.quizResults.every(result => result && Number.isInteger(result.mistakes) && result.mistakes >= 0 && result.mistakes <= 2 &&
           typeof result.solved === 'boolean' && Array.isArray(result.eliminated) && result.eliminated.length === result.mistakes &&
           new Set(result.eliminated).size === result.eliminated.length && result.eliminated.every(value => Number.isInteger(value) && value >= 1 && value <= 100))) return null;
     if (data.quizResults.some((result, i) => result.eliminated.includes(lookup.get(data.ids[i]).answer))) return null;
-    quizResults = data.quizResults.map(result => ({ mistakes: result.mistakes, solved: result.solved, eliminated: [...result.eliminated] }));
+    quizResults = data.quizResults.map((result, i) => {
+      const task = lookup.get(data.ids[i]);
+      const options = data.v === 5 ? result.options : makeAnswerOptions(task, Math.random, result.eliminated);
+      if (!Array.isArray(options) || options.length !== 3 || new Set(options).size !== 3 ||
+          !options.includes(task.answer) || !result.eliminated.every(value => options.includes(value)) ||
+          options.some(value => !Number.isInteger(value) || value < 1 || value > 100)) return null;
+      return { mistakes: result.mistakes, solved: result.solved, eliminated: [...result.eliminated], options: [...options] };
+    });
+    if (quizResults.some(result => result === null)) return null;
   }
   return { table: data.table, random: data.random, mode: data.v >= 3 ? data.mode : 'study', index: data.index,
     list: data.ids.map(id => lookup.get(id)), quizResults };
@@ -123,7 +131,7 @@ export function nextTable(table) {
 }
 
 export function newCheck(table, random, rng) {
-  return { ...newSession(table, random, rng), answers: [] };
+  return { ...newSession(table, random, rng), answers: [], mistakes: [] };
 }
 
 export function submitCheckAnswer(check, digits) {
@@ -131,8 +139,14 @@ export function submitCheckAnswer(check, digits) {
   const canAdd = check.index === check.answers.length;
   const canCorrect = check.index === check.answers.length - 1 && check.answers[check.index] !== check.list[check.index].answer;
   if (!canAdd && !canCorrect) return false;
-  if (canAdd) check.answers.push(Number(digits));
-  else check.answers[check.index] = Number(digits);
+  const answer = Number(digits);
+  if (canAdd) {
+    check.answers.push(answer);
+    check.mistakes.push(Number(answer !== check.list[check.index].answer));
+  } else {
+    check.answers[check.index] = answer;
+    if (answer !== check.list[check.index].answer) check.mistakes[check.index]++;
+  }
   return true;
 }
 
@@ -144,22 +158,25 @@ export function advanceCheck(check) {
 
 export function checkTotals(check) {
   const correct = check.answers.filter((answer, i) => answer === check.list[i].answer).length;
-  return { correct, incorrect: check.answers.length - correct };
+  return { correct, incorrect: check.mistakes.reduce((total, count) => total + count, 0) };
 }
 
 export function packCheck(check) {
-  return JSON.stringify({ session: JSON.parse(packSession(check)), answers: check.answers });
+  return JSON.stringify({ v: 5, session: JSON.parse(packSession(check)), answers: check.answers, mistakes: check.mistakes });
 }
 
 export function unpackCheck(raw) {
   if (typeof raw !== 'string' || raw.length > 16384) return null;
   let data;
   try { data = JSON.parse(raw); } catch { return null; }
-  if (![3, 4].includes(data?.session?.v) || !Array.isArray(data.answers)) return null;
+  if (![3, 4, 5].includes(data?.session?.v) || !Array.isArray(data.answers)) return null;
   const session = unpackSession(JSON.stringify(data.session));
   if (!session || session.mode !== 'study') return null;
   const { answers } = data;
   if (answers.length < session.index || answers.length > Math.min(session.index + 1, session.list.length) ||
       !answers.every(value => Number.isInteger(value) && value >= 0 && value <= 999)) return null;
-  return { ...session, answers };
+  const mistakes = data.v === 5 ? data.mistakes : answers.map((value, i) => Number(value !== session.list[i].answer));
+  if (!Array.isArray(mistakes) || mistakes.length !== answers.length ||
+      !mistakes.every((value, i) => Number.isInteger(value) && value >= Number(answers[i] !== session.list[i].answer))) return null;
+  return { ...session, answers, mistakes };
 }
