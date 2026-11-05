@@ -19,7 +19,7 @@ Node.js 18+. `npm ci && npm run check`. Тесты охватывают 100/10 �
 
 ## Telegram Serverless
 
-Опубликована Serverless revision `4`: <https://app8854507045.tgcloud.ai/>. Текущий зафиксированный выпуск соответствует исходникам на SHA `559da5938f2f97ca563c87eea6a1b3fcdd0df3f2`; фактическая публикация подтверждена в PR #16. Изменения интерфейса в текущем PR требуют отдельного выпуска после безопасного preflight; GitHub merge сам по себе Telegram не обновляет.
+Опубликована Serverless revision `4`: <https://app8854507045.tgcloud.ai/>. Последняя подтверждённая публикация соответствует исходникам на SHA `559da5938f2f97ca563c87eea6a1b3fcdd0df3f2` (PR #16). В `main` после этого влит PR #17 (`72fb3c19a4e6d4adbf85ca318d4f84415f0d7b1b`); он ещё не опубликован. GitHub merge сам по себе Telegram не обновляет.
 
 Исходники `main` могут содержать изменения, ещё не опубликованные в Telegram. Перед выпуском новой версии следовать preflight ниже; обновление GitHub само по себе не меняет приложение в Telegram.
 
@@ -27,7 +27,7 @@ Node.js 18+. `npm ci && npm run check`. Тесты охватывают 100/10 �
 
 Username бота CLI не показывает. Для подтверждения, что сохранённая CLI-связь относится к `@umnozhayka_tgbot`, владелец сверяет app ID с настройками Serverless именно этого бота в BotFather.
 
-Инструкции: [Telegram deployment](docs/TELEGRAM_DEPLOY.md), [оформление бота](docs/BOT_PROFILE.md), [независимая QA](docs/CODEX_CHECK_QA_TASK.md), [выпуск нового интерфейса после merge](docs/CODEX_RELEASE_UI_TASK.md).
+Инструкции: [Telegram deployment](docs/TELEGRAM_DEPLOY.md), [оформление бота](docs/BOT_PROFILE.md), [независимая QA](docs/CODEX_CHECK_QA_TASK.md), [выпуск текущего main на Ubuntu VM](docs/CODEX_RELEASE_CURRENT_MAIN_TASK.md).
 
 Файлы оформления: `app/assets/bot-avatar.png`, `app/assets/welcome.png` и SVG-исходники. Владелец подтвердил настройку бота и проверку Mini App в Telegram 4 ноября 2026 года. Отдельная проверка доставки `/start` с картинкой не зафиксирована.
 
