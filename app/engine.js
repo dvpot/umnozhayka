@@ -56,15 +56,18 @@ export function makeAnswerOptions(task, rng = Math.random) {
 }
 
 export function newSession(table = 'all', random = false, rng = Math.random) {
-  return { table, random, mode: 'study', index: 0, list: makeExercises(table, random, rng) };
+  const list = makeExercises(table, random, rng);
+  return { table, random, mode: 'study', index: 0, list,
+    quizResults: list.map(() => ({ mistakes: 0, solved: false, eliminated: [] })) };
 }
 
 export function packSession(s) {
-  return JSON.stringify({ v: 3, table: s.table, random: s.random, mode: s.mode, index: s.index, ids: s.list.map(x => x.id) });
+  return JSON.stringify({ v: 4, table: s.table, random: s.random, mode: s.mode, index: s.index,
+    ids: s.list.map(x => x.id), quizResults: s.quizResults });
 }
 
 export function unpackSession(raw) {
-  if (typeof raw !== 'string' || raw.length > 4096) return null;
+  if (typeof raw !== 'string' || raw.length > 16384) return null;
   let data;
   try { data = JSON.parse(raw); } catch { return null; }
   if (!data || typeof data.random !== 'boolean' || !Number.isInteger(data.index)) return null;
@@ -72,13 +75,43 @@ export function unpackSession(raw) {
   try { ordered = makeExercises(data.table); } catch { return null; }
   // После обновления ×1…×9 -> ×1…×10 сохраняем режим, начинаем полный новый цикл.
   if (data.v === 1) return newSession(data.table, data.random);
-  if ((data.v !== 2 && data.v !== 3) || !Array.isArray(data.ids) || data.ids.length !== ordered.length ||
+  if (![2, 3, 4].includes(data.v) || !Array.isArray(data.ids) || data.ids.length !== ordered.length ||
       data.index < 0 || data.index > ordered.length || new Set(data.ids).size !== ordered.length) return null;
-  if (data.v === 3 && data.mode !== 'study' && data.mode !== 'quiz') return null;
+  if (data.v >= 3 && data.mode !== 'study' && data.mode !== 'quiz') return null;
   const lookup = new Map(ordered.map(x => [x.id, x]));
   if (!data.ids.every(id => typeof id === 'string' && lookup.has(id))) return null;
   if (!data.random && !data.ids.every((id, i) => id === ordered[i].id)) return null;
-  return { table: data.table, random: data.random, mode: data.v === 3 ? data.mode : 'study', index: data.index, list: data.ids.map(id => lookup.get(id)) };
+  let quizResults = ordered.map(() => ({ mistakes: 0, solved: false, eliminated: [] }));
+  if (data.v === 4) {
+    if (!Array.isArray(data.quizResults) || data.quizResults.length !== ordered.length ||
+        !data.quizResults.every(result => result && Number.isInteger(result.mistakes) && result.mistakes >= 0 && result.mistakes <= 2 &&
+          typeof result.solved === 'boolean' && Array.isArray(result.eliminated) && result.eliminated.length === result.mistakes &&
+          new Set(result.eliminated).size === result.eliminated.length && result.eliminated.every(value => Number.isInteger(value) && value >= 1 && value <= 100))) return null;
+    if (data.quizResults.some((result, i) => result.eliminated.includes(lookup.get(data.ids[i]).answer))) return null;
+    quizResults = data.quizResults.map(result => ({ mistakes: result.mistakes, solved: result.solved, eliminated: [...result.eliminated] }));
+  }
+  return { table: data.table, random: data.random, mode: data.v >= 3 ? data.mode : 'study', index: data.index,
+    list: data.ids.map(id => lookup.get(id)), quizResults };
+}
+
+export function chooseQuizAnswer(session, value) {
+  if (!session || session.mode !== 'quiz' || !Number.isInteger(value) ||
+      session.index < 0 || session.index >= session.list.length) return null;
+  const result = session.quizResults[session.index];
+  if (result.solved || result.eliminated.includes(value)) return null;
+  if (value === session.list[session.index].answer) {
+    result.solved = true;
+    return 'correct';
+  }
+  result.mistakes++;
+  result.eliminated.push(value);
+  return 'incorrect';
+}
+
+export function quizTotals(session) {
+  return session.quizResults.reduce((totals, result) => ({
+    correct: totals.correct + Number(result.solved), incorrect: totals.incorrect + result.mistakes
+  }), { correct: 0, incorrect: 0 });
 }
 
 export function nextTable(table) {
@@ -90,9 +123,12 @@ export function newCheck(table, random, rng) {
 }
 
 export function submitCheckAnswer(check, digits) {
-  if (check.index !== check.answers.length || check.index >= check.list.length ||
-      typeof digits !== 'string' || !/^\d{1,3}$/.test(digits)) return false;
-  check.answers.push(Number(digits));
+  if (check.index >= check.list.length || typeof digits !== 'string' || !/^\d{1,3}$/.test(digits)) return false;
+  const canAdd = check.index === check.answers.length;
+  const canCorrect = check.index === check.answers.length - 1 && check.answers[check.index] !== check.list[check.index].answer;
+  if (!canAdd && !canCorrect) return false;
+  if (canAdd) check.answers.push(Number(digits));
+  else check.answers[check.index] = Number(digits);
   return true;
 }
 
@@ -112,10 +148,10 @@ export function packCheck(check) {
 }
 
 export function unpackCheck(raw) {
-  if (typeof raw !== 'string' || raw.length > 4096) return null;
+  if (typeof raw !== 'string' || raw.length > 16384) return null;
   let data;
   try { data = JSON.parse(raw); } catch { return null; }
-  if (data?.session?.v !== 3 || !Array.isArray(data.answers)) return null;
+  if (![3, 4].includes(data?.session?.v) || !Array.isArray(data.answers)) return null;
   const session = unpackSession(JSON.stringify(data.session));
   if (!session || session.mode !== 'study') return null;
   const { answers } = data;
