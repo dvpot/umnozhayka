@@ -17,7 +17,7 @@ const ui = {
   finishText: byId('finish-description'), nextTable: byId('next-table-button'), finishTitle: byId('finish-title'),
   finishScore: byId('finish-score'), finishBack: byId('finish-back-button'), card: byId('example-card'),
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
-  voice: byId('voice-toggle'), voiceSelect: byId('voice-select'), voiceStatus: byId('voice-status'),
+  voice: byId('voice-toggle'), voiceSelect: byId('voice-select'), voiceTest: byId('voice-test'), voiceStatus: byId('voice-status'),
   loading: byId('app-loading'), shell: document.querySelector('.shell')
 };
 const delay = 10000;
@@ -42,6 +42,7 @@ let voiceEnabled = load(voiceKey) === 'true';
 let selectedVoiceURI = load(voiceChoiceKey) || '';
 let voices = [];
 let spokenTask = '';
+let speechTestTimer = null;
 
 try {
   const telegram = window.Telegram?.WebApp;
@@ -63,21 +64,37 @@ function stopTimer() {
   if (timer !== null) clearInterval(timer);
   timer = null;
 }
-function speak(text) {
-  if (!voiceEnabled || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
+function speak(text, test = false) {
+  if ((!voiceEnabled && !test) || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
   window.speechSynthesis.cancel?.();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'ru-RU';
   utterance.rate = 0.9;
   utterance.voice = voices.find(voice => voice.voiceURI === selectedVoiceURI) || null;
-  utterance.onerror = () => { ui.voiceStatus.textContent = 'Не удалось озвучить. Проверь голосовые службы устройства.'; };
-  window.speechSynthesis.speak(utterance);
+  if (test) utterance.onstart = () => {
+    clearTimeout(speechTestTimer);
+    ui.voiceStatus.textContent = 'Браузер запустил речь. Если звука нет, проверь системный синтез речи и громкость медиа.';
+  };
+  if (test) utterance.onend = () => {
+    clearTimeout(speechTestTimer);
+    ui.voiceStatus.textContent = 'Проверочная фраза завершена.';
+  };
+  utterance.onerror = () => {
+    clearTimeout(speechTestTimer);
+    ui.voiceStatus.textContent = 'Браузер не смог озвучить фразу. Проверь поддержку речи и системный голос.';
+  };
+  try { window.speechSynthesis.speak(utterance); }
+  catch {
+    clearTimeout(speechTestTimer);
+    if (test) ui.voiceStatus.textContent = 'Браузер не запустил речь. Проверь системный синтез речи.';
+  }
 }
 function updateVoices() {
   if (!('speechSynthesis' in window) || typeof window.speechSynthesis.speak !== 'function' ||
       typeof window.SpeechSynthesisUtterance !== 'function') {
     ui.voice.disabled = true;
     ui.voiceSelect.disabled = true;
+    ui.voiceTest.disabled = true;
     ui.voiceStatus.textContent = 'Это приложение не поддерживает озвучивание в данном браузере.';
     return;
   }
@@ -93,6 +110,7 @@ function updateVoices() {
   if (previous && voices.some(voice => voice.voiceURI === previous)) ui.voiceSelect.value = previous;
   else { selectedVoiceURI = ''; ui.voiceSelect.value = ''; }
   ui.voiceSelect.disabled = voices.length === 0;
+  ui.voiceTest.disabled = false;
   ui.voiceStatus.textContent = voices.length
     ? 'Голоса предоставляет устройство; список может меняться между телефонами.'
     : 'Русские голоса не найдены. Проверь синтез речи в настройках устройства.';
@@ -344,6 +362,14 @@ ui.voiceSelect.addEventListener('change', () => {
   selectedVoiceURI = ui.voiceSelect.value;
   save();
 });
+ui.voiceTest.addEventListener('click', () => {
+  ui.voiceStatus.textContent = 'Проверяю озвучивание…';
+  speak('Проверка голоса. Привет!', true);
+  clearTimeout(speechTestTimer);
+  speechTestTimer = window.setTimeout(() => {
+    ui.voiceStatus.textContent = 'Браузер не подтвердил запуск речи. Проверь поддержку Web Speech и системный синтез речи.';
+  }, 2500);
+});
 function editDraft(key) {
   if (!checking || session.index >= session.list.length || session.index > session.answers.length) return;
   if (key === 'Backspace') draft = draft.slice(0, -1);
@@ -371,9 +397,13 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') { e.preventDefault(); forward(); }
 });
 let startPoint = null;
+let suppressSwipeClick = false;
+let swipeClickTimer = null;
 ui.card.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
-  if (e.target instanceof Element && e.target.closest('button')) return;
+  clearTimeout(swipeClickTimer);
+  swipeClickTimer = null;
+  suppressSwipeClick = false;
   startPoint = { id: e.pointerId, x: e.clientX, y: e.clientY };
 });
 ui.card.addEventListener('pointerup', e => {
@@ -382,9 +412,20 @@ ui.card.addEventListener('pointerup', e => {
   const dy = e.clientY - startPoint.y;
   startPoint = null;
   if (Math.abs(dx) < 52 || Math.abs(dx) <= 1.25 * Math.abs(dy)) return;
+  suppressSwipeClick = true;
+  swipeClickTimer = window.setTimeout(() => { suppressSwipeClick = false; }, 1000);
+  e.preventDefault();
   if (dx < 0) forward();
   else backward();
 });
+ui.card.addEventListener('click', e => {
+  if (!suppressSwipeClick || e.detail === 0) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  clearTimeout(swipeClickTimer);
+  swipeClickTimer = null;
+  suppressSwipeClick = false;
+}, true);
 ui.card.addEventListener('pointercancel', () => { startPoint = null; });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) pauseTimer();
