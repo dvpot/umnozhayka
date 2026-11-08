@@ -17,15 +17,25 @@ const ui = {
   left: byId('left-number'), right: byId('right-number'), answer: byId('answer'), quizStatus: byId('quiz-status'),
   bar: byId('timer-bar'), fill: byId('timer-fill'), back: byId('back-button'), next: byId('next-button'),
   finishText: byId('finish-description'), nextTable: byId('next-table-button'), finishTitle: byId('finish-title'),
-  finishScore: byId('finish-score'), finishBack: byId('finish-back-button'), card: byId('example-card'),
+  finishScore: byId('finish-score'), finishSync: byId('finish-sync'), finishBack: byId('finish-back-button'), card: byId('example-card'),
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
-  masteryTitle: byId('mastery-title'), masteryCount: byId('mastery-count'), masteryScores: byId('mastery-scores'),
+  home: byId('home-view'), lessonHeader: byId('lesson-header'), navHome: byId('nav-home'),
+  navMastery: byId('nav-mastery'), mastery: byId('mastery-view'), masteryScope: byId('mastery-scope'),
+  masteryRefresh: byId('mastery-refresh'), masteryImport: byId('mastery-import'),
+  masteryConfirmText: byId('mastery-confirm-text'), masteryTitle: byId('mastery-title'), masteryCount: byId('mastery-count'), masteryScores: byId('mastery-scores'),
   masteryClear: byId('mastery-clear'), masteryConfirmation: byId('mastery-confirmation'),
   masteryConfirm: byId('mastery-confirm'), masteryCancel: byId('mastery-cancel'), masteryStatus: byId('mastery-status'),
   voice: byId('voice-toggle'), voiceSelect: byId('voice-select'),
   loading: byId('app-loading'), shell: document.querySelector('.shell')
 };
 const delay = 10000;
+const telegram = window.Telegram?.WebApp;
+const accountMode = Boolean(telegram?.initData);
+let homeOpen = true;
+let accountScores = null;
+let pendingScores = null;
+let accountQueue = Promise.resolve();
+let accountJobs = 0;
 const storageKey = 'umnozhayka.session.v1';
 const checkKey = 'umnozhayka.check.v1';
 const activityKey = 'umnozhayka.activity.v1';
@@ -53,7 +63,6 @@ let spokenTask;
 let skipTaskSpeech = false;
 
 try {
-  const telegram = window.Telegram?.WebApp;
   telegram?.ready();
   telegram?.expand();
   telegram?.setHeaderColor?.('#6c5ce7');
@@ -68,9 +77,75 @@ function save() {
     window.localStorage.setItem(voiceChoiceKey, selectedVoiceURI);
   } catch { /* Хранилище может быть отключено. */ }
 }
-function saveTableProgress() {
+function localTableProgress() {
+  return unpackTableProgress(load(masteryKey));
+}
+function hasScores(scores) {
+  return scores?.some(score => score !== null) ?? false;
+}
+function removeLocalProgress() {
   try {
-    const best = unpackTableProgress(window.localStorage.getItem(masteryKey));
+    window.localStorage.removeItem(masteryKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function callTableProgress(input) {
+  return new Promise((resolve, reject) => {
+    telegram.Serverless.call('tableProgress', input, (error, result) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      const scores = result?.scores;
+      if (!Array.isArray(scores) || scores.length !== MAX_FACTOR ||
+          !scores.every(score => score === null || (Number.isInteger(score) && score >= 0 && score <= MAX_FACTOR))) {
+        reject(new Error('Некорректный ответ сервера.'));
+        return;
+      }
+      resolve(scores);
+    });
+  });
+}
+function queueAccountProgress(action, scores, onSuccess, onFailure) {
+  accountJobs++;
+  renderTableProgress();
+  accountQueue = accountQueue.then(async () => {
+    try {
+      accountScores = await callTableProgress(scores ? { action, scores } : { action });
+      ui.masteryStatus.textContent = onSuccess?.() ?? (pendingScores ? 'Есть результат, ожидающий сохранения.' : '');
+    } catch {
+      ui.masteryStatus.textContent = 'Не удалось связаться с хранилищем Telegram. Попробуй ещё раз.';
+      onFailure?.();
+    } finally {
+      accountJobs--;
+      renderTableProgress();
+    }
+  });
+}
+function syncCompletedCheck() {
+  const snapshot = pendingScores;
+  if (!snapshot) return;
+  ui.finishSync.textContent = 'Сохраняем прогресс в аккаунте…';
+  queueAccountProgress('merge', snapshot, () => {
+    if (pendingScores === snapshot) pendingScores = null;
+    ui.finishSync.textContent = 'Прогресс сохранён в аккаунте.';
+    return 'Прогресс сохранён в аккаунте.';
+  }, () => {
+    ui.finishSync.textContent = 'Прогресс пока не сохранён. Открой «Мой прогресс» и повтори сохранение.';
+  });
+}
+function saveTableProgress() {
+  if (!session.tracksTableProgress) return;
+  if (accountMode) {
+    const best = pendingScores ?? unpackTableProgress(null);
+    pendingScores = recordTableProgress(best, session);
+    syncCompletedCheck();
+    return;
+  }
+  try {
+    const best = localTableProgress();
     const updated = recordTableProgress(best, session);
     if (updated !== best) window.localStorage.setItem(masteryKey, JSON.stringify(updated));
     ui.masteryStatus.textContent = '';
@@ -79,9 +154,14 @@ function saveTableProgress() {
   }
 }
 function renderTableProgress() {
-  const best = unpackTableProgress(load(masteryKey));
+  const local = localTableProgress();
+  const best = accountMode ? (accountScores ?? unpackTableProgress(null)) : local;
   const mastered = best.filter(score => score === MAX_FACTOR).length;
-  ui.masteryCount.textContent = `Таблиц без ошибок: ${mastered} из ${MAX_FACTOR}`;
+  const busy = accountJobs > 0;
+  ui.masteryScope.textContent = accountMode ? 'Прогресс аккаунта Telegram' : 'Прогресс на этом устройстве';
+  ui.masteryCount.textContent = accountMode && !accountScores
+    ? (busy ? 'Загружаем прогресс…' : 'Прогресс аккаунта ещё не загружен.')
+    : `Таблиц без ошибок: ${mastered} из ${MAX_FACTOR}`;
   const rows = best.map((score, i) => {
     const row = document.createElement('div');
     const label = document.createElement('dt');
@@ -92,7 +172,16 @@ function renderTableProgress() {
     return row;
   });
   ui.masteryScores.replaceChildren(...rows);
-  ui.masteryClear.disabled = best.every(score => score === null);
+  ui.masteryRefresh.classList.toggle('hidden', !accountMode);
+  ui.masteryRefresh.textContent = pendingScores ? 'Повторить сохранение' : 'Обновить';
+  ui.masteryRefresh.disabled = busy;
+  ui.masteryImport.classList.toggle('hidden', !accountMode || !hasScores(local));
+  ui.masteryImport.disabled = busy;
+  ui.masteryClear.disabled = busy || !(hasScores(best) || hasScores(local) || pendingScores);
+  ui.masteryConfirm.disabled = busy;
+  ui.masteryConfirmText.textContent = accountMode
+    ? 'Удалить статистику аккаунта на всех устройствах и старую копию на этом устройстве?'
+    : 'Удалить все результаты по таблицам на этом устройстве?';
 }
 function showMasteryClear(open) {
   ui.masteryConfirmation.classList.toggle('hidden', !open);
@@ -171,7 +260,7 @@ function reveal() {
   speak(answer);
 }
 function runTimer() {
-  if (timer !== null || document.hidden || revealed || checking || session.mode === 'quiz' || session.index >= session.list.length) return;
+  if (!homeOpen || timer !== null || document.hidden || revealed || checking || session.mode === 'quiz' || session.index >= session.list.length) return;
   startedAt = performance.now();
   timer = setInterval(() => {
     const now = performance.now();
@@ -326,7 +415,10 @@ function start(table, random) {
 function forward() {
   if (checking) {
     if (!advanceCheck(session)) return;
-    if (session.index === session.list.length) saveTableProgress();
+    if (session.index === session.list.length) {
+      ui.finishSync.textContent = '';
+      saveTableProgress();
+    }
     draft = '';
     render();
     (session.index === session.list.length ? ui.finishTitle : ui.checkAnswer).focus();
@@ -360,15 +452,34 @@ ui.answer.addEventListener('click', reveal);
 byId('again-button').addEventListener('click', () => start(session.table, session.random));
 ui.nextTable.addEventListener('click', () => { const table = nextTable(session.table); if (table !== null) start(table, session.random); });
 ui.finishBack.addEventListener('click', backward);
+function selectView(showHome) {
+  if (showHome === homeOpen) return;
+  homeOpen = showHome;
+  ui.home.classList.toggle('hidden', !showHome);
+  ui.lessonHeader.classList.toggle('hidden', !showHome);
+  ui.mastery.classList.toggle('hidden', showHome);
+  (showHome ? ui.navMastery : ui.navHome).removeAttribute('aria-current');
+  (showHome ? ui.navHome : ui.navMastery).setAttribute('aria-current', 'page');
+  showMasteryClear(false);
+  window.scrollTo(0, 0);
+  if (showHome) {
+    runTimer();
+  } else {
+    pauseTimer();
+    if (accountMode) queueAccountProgress('read');
+    else renderTableProgress();
+    ui.masteryTitle.focus();
+  }
+}
+ui.navHome.addEventListener('click', () => selectView(true));
+ui.navMastery.addEventListener('click', () => selectView(false));
 ui.settings.addEventListener('click', () => {
-  renderTableProgress();
   ui.shell.inert = true;
   ui.settingsDialog.classList.remove('hidden');
   ui.settings.setAttribute('aria-expanded', 'true');
   ui.settingsClose.focus();
 });
 function closeSettings() {
-  showMasteryClear(false);
   ui.shell.inert = false;
   ui.settingsDialog.classList.add('hidden');
   ui.settings.setAttribute('aria-expanded', 'false');
@@ -385,16 +496,34 @@ ui.masteryCancel.addEventListener('click', () => {
   showMasteryClear(false);
   ui.masteryClear.focus();
 });
+ui.masteryRefresh.addEventListener('click', () => {
+  if (pendingScores) syncCompletedCheck();
+  else queueAccountProgress('read');
+});
+ui.masteryImport.addEventListener('click', () => {
+  const local = localTableProgress();
+  if (!hasScores(local)) return;
+  queueAccountProgress('merge', local, () => removeLocalProgress()
+    ? 'Результаты перенесены в аккаунт.'
+    : 'Результаты перенесены, но локальную копию удалить не удалось.');
+});
 ui.masteryConfirm.addEventListener('click', () => {
-  try {
-    window.localStorage.removeItem(masteryKey);
-    ui.masteryStatus.textContent = 'Статистика удалена.';
-  } catch {
-    ui.masteryStatus.textContent = 'Не удалось удалить статистику на этом устройстве.';
-  }
   showMasteryClear(false);
-  renderTableProgress();
   ui.masteryTitle.focus();
+  if (accountMode) {
+    queueAccountProgress('clear', null, () => {
+      pendingScores = null;
+      ui.finishSync.textContent = '';
+      return removeLocalProgress()
+        ? 'Статистика аккаунта удалена.'
+        : 'Статистика аккаунта удалена. Локальную копию удалить не удалось.';
+    });
+  } else {
+    ui.masteryStatus.textContent = removeLocalProgress()
+      ? 'Статистика удалена.'
+      : 'Не удалось удалить статистику на этом устройстве.';
+    renderTableProgress();
+  }
 });
 ui.voice.addEventListener('change', () => {
   voiceEnabled = ui.voice.checked;
@@ -441,6 +570,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeSettings();
     return;
   }
+  if (!homeOpen) return;
   if (e.target instanceof HTMLElement && ['SELECT','INPUT','TEXTAREA'].includes(e.target.tagName)) return;
   if (checking && (/^\d$/.test(e.key) || e.key === 'Backspace')) { e.preventDefault(); editDraft(e.key); }
   if (checking && e.key === 'Enter' && (e.target === document.body || e.target === ui.checkAnswer)) { e.preventDefault(); submit(); }
@@ -480,7 +610,7 @@ ui.card.addEventListener('click', e => {
 ui.card.addEventListener('pointercancel', () => { startPoint = null; });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) pauseTimer();
-  else if (!revealed && session.index < session.list.length) {
+  else if (homeOpen && !revealed && session.index < session.list.length) {
     if (remaining <= 0) reveal();
     else { updateCountdown(); runTimer(); }
   }
