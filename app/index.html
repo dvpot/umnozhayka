@@ -53,7 +53,7 @@
             <div class="equation"><span id="left-number">1</span><span class="multiply">×</span><span id="right-number">1</span></div>
             <div class="equals">=</div>
             <div id="study-controls" class="card-stage study-controls">
-              <button id="answer" class="answer" type="button" aria-label="Показать ответ" title="Нажми, чтобы узнать ответ">?</button>
+              <button id="answer" class="answer-value answer" type="button" aria-label="Показать ответ" title="Нажми, чтобы узнать ответ">?</button>
               <div role="progressbar" id="timer-bar" aria-label="Время до ответа" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" class="timer"><div id="timer-fill" class="timer-fill"></div></div>
             </div>
             <div id="quiz-controls" class="card-stage quiz-controls hidden">
@@ -61,7 +61,7 @@
               <span id="quiz-status" class="sr-only" aria-live="polite"></span>
             </div>
             <div id="check-controls" class="card-stage check-controls hidden">
-              <output id="check-answer" class="check-answer" aria-label="Твой ответ" tabindex="-1">?</output>
+              <output id="check-answer" class="answer-value check-answer" aria-label="Твой ответ" tabindex="-1">?</output>
             </div>
             <button class="card-arrow card-arrow-right" id="next-button" type="button" aria-label="Следующий пример" title="Следующий пример">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 5 7 7-7 7"/></svg>
@@ -101,10 +101,12 @@
     <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="settings-heading"><h2 id="settings-title">Настройки</h2><button id="settings-close" class="settings-close" type="button" aria-label="Закрыть настройки">×</button></div>
       <label class="voice-setting"><span>Озвучивать примеры и ответы</span><input id="voice-toggle" type="checkbox"></label>
-      <label class="voice-choice"><span>Голос</span><select id="voice-select" aria-label="Голос для озвучивания"><option value="">Автоматически</option></select></label>
-      <button id="voice-test" class="secondary voice-test" type="button">Проверить озвучивание</button>
-      <p id="voice-status" class="voice-status" aria-live="polite">Доступные голоса зависят от устройства.</p>
-      <p class="voice-help">Если на Android нет звука: включи речь в настройках приложения; в настройках устройства открой «Специальные возможности → Преобразование текста в речь», выбери движок и установи русский голос.</p>
+      <div class="voice-choice">
+        <label for="voice-select">Голос</label>
+        <select id="voice-select"><option value="">Автоматически</option></select>
+        <button id="voice-info" class="voice-info" type="button" aria-label="Об озвучивании на Android" aria-controls="voice-help" aria-expanded="false">ⓘ</button>
+      </div>
+      <p id="voice-help" class="voice-help hidden">В Telegram на Android может быть недоступен системный голос. Тогда Умножайка использует встроенную русскую озвучку. Если её не слышно, проверь громкость медиа.</p>
     </section>
   </div>
 </body>

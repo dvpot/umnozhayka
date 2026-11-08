@@ -2,6 +2,7 @@ import {
   advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newSession, nextTable,
   packCheck, packSession, quizTotals, submitCheckAnswer, unpackCheck, unpackSession
 } from './engine.js';
+import { playRecording, stopRecording } from './recorded-speech.js';
 
 const byId = id => document.getElementById(id);
 const ui = {
@@ -17,7 +18,7 @@ const ui = {
   finishText: byId('finish-description'), nextTable: byId('next-table-button'), finishTitle: byId('finish-title'),
   finishScore: byId('finish-score'), finishBack: byId('finish-back-button'), card: byId('example-card'),
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
-  voice: byId('voice-toggle'), voiceSelect: byId('voice-select'), voiceTest: byId('voice-test'), voiceStatus: byId('voice-status'),
+  voice: byId('voice-toggle'), voiceSelect: byId('voice-select'), voiceInfo: byId('voice-info'), voiceHelp: byId('voice-help'),
   loading: byId('app-loading'), shell: document.querySelector('.shell')
 };
 const delay = 10000;
@@ -41,8 +42,10 @@ let revealed = false;
 let voiceEnabled = load(voiceKey) === 'true';
 let selectedVoiceURI = load(voiceChoiceKey) || '';
 let voices = [];
-let spokenTask = '';
-let speechTestTimer = null;
+let spokenTask;
+let skipTaskSpeech = false;
+let speechRequest = 0;
+const builtInVoice = 'umnozhayka:recorded';
 
 try {
   const telegram = window.Telegram?.WebApp;
@@ -64,67 +67,63 @@ function stopTimer() {
   if (timer !== null) clearInterval(timer);
   timer = null;
 }
-function speak(text, test = false) {
-  if ((!voiceEnabled && !test) || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
-  window.speechSynthesis.cancel?.();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'ru-RU';
-  utterance.rate = 0.9;
-  utterance.voice = voices.find(voice => voice.voiceURI === selectedVoiceURI) || null;
-  if (test) utterance.onstart = () => {
-    clearTimeout(speechTestTimer);
-    ui.voiceStatus.textContent = 'Браузер запустил речь. Если звука нет, проверь системный синтез речи и громкость медиа.';
+function getSystemVoice() {
+  if (selectedVoiceURI === builtInVoice) return null;
+  return voices.find(voice => voice.voiceURI === selectedVoiceURI)
+    || voices.find(voice => voice.default)
+    || voices[0]
+    || null;
+}
+function speak(text, { settings = false, clips = [text] } = {}) {
+  if (!settings && (!voiceEnabled || skipTaskSpeech)) return;
+  const current = ++speechRequest;
+  stopRecording();
+  const synth = window.speechSynthesis;
+  const fallback = () => {
+    if (speechRequest === current) void playRecording(clips);
   };
-  if (test) utterance.onend = () => {
-    clearTimeout(speechTestTimer);
-    ui.voiceStatus.textContent = 'Проверочная фраза завершена.';
-  };
-  utterance.onerror = () => {
-    clearTimeout(speechTestTimer);
-    ui.voiceStatus.textContent = 'Браузер не смог озвучить фразу. Проверь поддержку речи и системный голос.';
-  };
-  try { window.speechSynthesis.speak(utterance); }
-  catch {
-    clearTimeout(speechTestTimer);
-    if (test) ui.voiceStatus.textContent = 'Браузер не запустил речь. Проверь системный синтез речи.';
+  try {
+    synth?.cancel?.();
+    const voice = getSystemVoice();
+    if (!voice || typeof synth?.speak !== 'function' || typeof window.SpeechSynthesisUtterance !== 'function') {
+      fallback();
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = voice.lang;
+    utterance.rate = 0.9;
+    utterance.voice = voice;
+    utterance.onerror = fallback;
+    synth.speak(utterance);
+  } catch {
+    fallback();
   }
 }
 function updateVoices() {
-  if (!('speechSynthesis' in window) || typeof window.speechSynthesis.speak !== 'function' ||
-      typeof window.SpeechSynthesisUtterance !== 'function') {
-    ui.voice.disabled = true;
-    ui.voiceSelect.disabled = true;
-    ui.voiceTest.disabled = true;
-    ui.voiceStatus.textContent = 'Это приложение не поддерживает озвучивание в данном браузере.';
-    return;
-  }
   try {
-    voices = (typeof window.speechSynthesis.getVoices === 'function' ? window.speechSynthesis.getVoices() : [])
-      .filter(voice => voice.lang?.toLowerCase().startsWith('ru'));
+    voices = (window.speechSynthesis?.getVoices?.() || [])
+      .filter(voice => /^ru(?:-|$)/i.test(voice.lang));
   } catch { voices = []; }
-  const previous = selectedVoiceURI;
-  ui.voiceSelect.replaceChildren(new Option('Автоматически', ''));
-  for (const voice of voices) {
-    ui.voiceSelect.add(new Option(`${voice.name}${voice.default ? ' · по умолчанию' : ''}`, voice.voiceURI));
-  }
-  if (previous && voices.some(voice => voice.voiceURI === previous)) ui.voiceSelect.value = previous;
-  else { selectedVoiceURI = ''; ui.voiceSelect.value = ''; }
+  ui.voiceSelect.replaceChildren(new Option(voices.length ? 'Автоматически' : 'Встроенный голос', ''));
+  if (voices.length) ui.voiceSelect.add(new Option('Встроенный голос', builtInVoice));
+  for (const voice of voices) ui.voiceSelect.add(new Option(voice.name, voice.voiceURI));
+  ui.voiceSelect.value = Array.from(ui.voiceSelect.options).some(option => option.value === selectedVoiceURI)
+    ? selectedVoiceURI : '';
   ui.voiceSelect.disabled = voices.length === 0;
-  ui.voiceTest.disabled = false;
-  ui.voiceStatus.textContent = voices.length
-    ? 'Голоса предоставляет устройство; список может меняться между телефонами.'
-    : 'Русские голоса не найдены. Проверь синтез речи в настройках устройства.';
 }
-if ('speechSynthesis' in window) {
-  updateVoices();
-  window.speechSynthesis.addEventListener?.('voiceschanged', updateVoices);
-  window.setTimeout(updateVoices, 500);
-}
+updateVoices();
+window.speechSynthesis?.addEventListener?.('voiceschanged', updateVoices);
+window.setTimeout(updateVoices, 500);
+
 function announceTask(task) {
   const key = [checking ? 'check' : session.mode, task.id].join(':');
   if (key === spokenTask) return;
+  const firstRender = spokenTask === undefined;
   spokenTask = key;
-  speak(`${task.a} умножить на ${task.b}`);
+  skipTaskSpeech = false;
+  if (firstRender) return;
+  const prefix = `${task.a} умножить на`;
+  speak(`${prefix} ${task.b}`, { clips: [prefix, String(task.b)] });
 }
 function updateCountdown() {
   if (revealed || checking || session.mode === 'quiz') return;
@@ -182,8 +181,8 @@ function renderAnswerOptions(task) {
     button.addEventListener('click', () => {
       if (button.disabled) return;
       const outcome = chooseQuizAnswer(session, value);
-      if (outcome === 'correct') speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
-      else if (outcome === 'incorrect') speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Выбери другой ответ.', 'Ничего, попробуй снова.']));
+      if (outcome === 'correct') speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']), { clips: ['Верно!'] });
+      else if (outcome === 'incorrect') speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Выбери другой ответ.', 'Ничего, попробуй снова.']), { clips: ['Попробуй ещё раз.'] });
       render();
     });
     ui.options.append(button);
@@ -349,26 +348,20 @@ ui.settingsClose.addEventListener('click', closeSettings);
 ui.settingsDialog.addEventListener('click', e => { if (e.target === ui.settingsDialog) closeSettings(); });
 ui.voice.addEventListener('change', () => {
   voiceEnabled = ui.voice.checked;
-  if (!voiceEnabled && 'speechSynthesis' in window) window.speechSynthesis.cancel();
-  if (voiceEnabled && session.index < session.list.length) {
-    spokenTask = '';
-    announceTask(session.list[session.index]);
-    if (checking && session.answers[session.index] === session.list[session.index].answer) speak(String(session.answers[session.index]));
-    else if (!checking && revealed) speak(String(session.list[session.index].answer));
-  }
+  skipTaskSpeech = true;
   save();
+  speak(voiceEnabled ? 'Звук включён.' : 'Звук выключен.', { settings: true });
 });
 ui.voiceSelect.addEventListener('change', () => {
   selectedVoiceURI = ui.voiceSelect.value;
   save();
+  const voice = getSystemVoice();
+  const greeting = 'Привет, я Умножайка.';
+  speak(voice?.name ? `Привет, я ${voice.name}.` : greeting, { settings: true, clips: [greeting] });
 });
-ui.voiceTest.addEventListener('click', () => {
-  ui.voiceStatus.textContent = 'Проверяю озвучивание…';
-  speak('Проверка голоса. Привет!', true);
-  clearTimeout(speechTestTimer);
-  speechTestTimer = window.setTimeout(() => {
-    ui.voiceStatus.textContent = 'Браузер не подтвердил запуск речи. Проверь поддержку Web Speech и системный синтез речи.';
-  }, 2500);
+ui.voiceInfo.addEventListener('click', () => {
+  const open = ui.voiceHelp.classList.toggle('hidden') === false;
+  ui.voiceInfo.setAttribute('aria-expanded', String(open));
 });
 function editDraft(key) {
   if (!checking || session.index >= session.list.length || session.index > session.answers.length) return;
@@ -382,8 +375,8 @@ function randomPhrase(phrases) {
 function submit() {
   if (!checking || !submitCheckAnswer(session, draft)) return;
   const task = session.list[session.index];
-  if (Number(draft) === task.answer) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
-  else speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Можно исправить.', 'Ничего, попробуй снова.']));
+  if (Number(draft) === task.answer) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']), { clips: ['Верно!'] });
+  else speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Можно исправить.', 'Ничего, попробуй снова.']), { clips: ['Попробуй ещё раз.'] });
   render();
   if (session.answers[session.index] === task.answer) ui.next.focus();
 }
