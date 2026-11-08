@@ -111,3 +111,25 @@ test('Прогресс принимает только десять оценок
     assert.deepEqual(engine.unpackTableProgress(bad), empty);
   }
 });
+
+test('Старые проверки завершаются без начисления прогресса по неполной истории попыток', () => {
+  const original = engine.newCheck(2);
+  engine.submitCheckAnswer(original, '999');
+  engine.submitCheckAnswer(original, '2');
+  engine.advanceCheck(original);
+  for (const version of [4, 5]) {
+    const saved = JSON.parse(engine.packCheck(original));
+    saved.v = version;
+    delete saved.tracksTableProgress;
+    if (version === 4) delete saved.mistakes;
+    const migrated = engine.unpackCheck(JSON.stringify(saved));
+    const restored = engine.unpackCheck(engine.packCheck(migrated));
+    for (const task of restored.list.slice(restored.index)) {
+      engine.submitCheckAnswer(restored, String(task.answer));
+      engine.advanceCheck(restored);
+    }
+    assert.equal(engine.checkTotals(restored).correct, 10);
+    const empty = engine.unpackTableProgress(null);
+    assert.equal(engine.recordTableProgress(empty, restored), empty);
+  }
+});
