@@ -161,6 +161,31 @@ export function checkTotals(check) {
   return { correct, incorrect: check.mistakes.reduce((total, count) => total + count, 0) };
 }
 
+export function unpackTableProgress(raw) {
+  try {
+    const scores = JSON.parse(raw);
+    if (Array.isArray(scores) && scores.length === MAX_FACTOR &&
+        scores.every(score => score === null || (Number.isInteger(score) && score >= 0 && score <= MAX_FACTOR))) {
+      return scores;
+    }
+  } catch { /* Повреждённое сохранение считается пустым. */ }
+  return Array(MAX_FACTOR).fill(null);
+}
+
+export function recordTableProgress(best, check) {
+  if (check.index !== check.list.length || check.answers.length !== check.list.length) return best;
+  const scores = Array(MAX_FACTOR).fill(null);
+  check.list.forEach(({ a, answer }, i) => {
+    const firstTry = check.answers[i] === answer && check.mistakes[i] === 0;
+    scores[a - 1] = (scores[a - 1] ?? 0) + Number(firstTry);
+  });
+  const next = best.map((previous, i) => {
+    const score = scores[i];
+    return score !== null && (previous === null || score > previous) ? score : previous;
+  });
+  return next.some((score, i) => score !== best[i]) ? next : best;
+}
+
 export function packCheck(check) {
   return JSON.stringify({ v: 5, session: JSON.parse(packSession(check)), answers: check.answers, mistakes: check.mistakes });
 }

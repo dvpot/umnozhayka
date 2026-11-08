@@ -72,3 +72,42 @@ test('Повреждённое сохранение не восстанавли�
   assert.equal(engine.unpackCheck(JSON.stringify({ ...packed, answers: [2, 4] })), null);
   assert.equal(engine.unpackCheck(JSON.stringify({ ...packed, session: { ...packed.session, index: 2 } })), null);
 });
+
+test('В прогресс попадают только первые попытки из завершённой проверки', () => {
+  const empty = engine.unpackTableProgress(null);
+  const check = engine.newCheck(2);
+  for (const task of check.list) {
+    if (task.b === 1) engine.submitCheckAnswer(check, '999');
+    engine.submitCheckAnswer(check, String(task.answer));
+    if (task.b < 10) engine.advanceCheck(check);
+  }
+  assert.equal(engine.recordTableProgress(empty, check), empty);
+  const restored = engine.unpackCheck(engine.packCheck(check));
+  engine.advanceCheck(restored);
+  const best = engine.recordTableProgress(empty, restored);
+  assert.equal(best[1], 9);
+  assert.equal(best[0], null);
+  assert.equal(empty[1], null);
+});
+
+test('Полная проверка «Все» обновляет каждую таблицу и сохраняет лучшие результаты', () => {
+  const best = engine.unpackTableProgress('[null,10,null,null,null,null,null,null,null,null]');
+  const check = engine.newCheck('all', true, () => 0);
+  for (const task of check.list) {
+    engine.submitCheckAnswer(check, task.a === 2 || (task.a === 3 && task.b <= 2) ? '999' : String(task.answer));
+    engine.advanceCheck(check);
+  }
+  const next = engine.recordTableProgress(best, check);
+  assert.deepEqual(next, [10, 10, 8, 10, 10, 10, 10, 10, 10, 10]);
+  assert.equal(engine.recordTableProgress(next, check), next);
+  assert.equal(engine.recordTableProgress(engine.unpackTableProgress(null), check)[1], 0);
+});
+
+test('Прогресс принимает только десять оценок от 0 до 10 или пустых значений', () => {
+  const empty = Array(10).fill(null);
+  const best = [null, 0, 1, 2, 3, 4, 7, 8, 9, 10];
+  assert.deepEqual(engine.unpackTableProgress(JSON.stringify(best)), best);
+  for (const bad of ['broken', '[]', 'null', '{"score":10}', ...[-1, 11, 0.5, '10', {}].map(value => JSON.stringify([value, ...empty.slice(1)]))]) {
+    assert.deepEqual(engine.unpackTableProgress(bad), empty);
+  }
+});

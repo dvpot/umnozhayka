@@ -105,6 +105,19 @@
         <label for="voice-select">Голос</label>
         <select id="voice-select"><option value="">Автоматически</option></select>
       </div>
+      <details class="mastery">
+        <summary id="mastery-title">Мой прогресс</summary>
+        <p>Сколько примеров получилось решить с первого раза. Для каждой таблицы сохраняется лучший результат завершённой «Проверки». «—» означает, что результата пока нет.</p>
+        <p id="mastery-count" class="mastery-count"></p>
+        <dl id="mastery-scores" class="mastery-scores" aria-label="Результаты по таблицам"></dl>
+        <button id="mastery-clear" type="button" aria-controls="mastery-confirmation" aria-expanded="false">Удалить статистику</button>
+        <div id="mastery-confirmation" class="reset-confirmation hidden" role="group" aria-label="Подтверждение удаления статистики">
+          <span>Удалить все результаты по таблицам на этом устройстве?</span>
+          <button id="mastery-confirm" type="button">Да, удалить</button>
+          <button id="mastery-cancel" type="button">Отмена</button>
+        </div>
+        <p id="mastery-status" role="status"></p>
+      </details>
     </section>
   </div>
 </body>

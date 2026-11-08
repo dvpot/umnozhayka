@@ -1,6 +1,7 @@
 import {
-  advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newSession, nextTable,
-  packCheck, packSession, quizTotals, submitCheckAnswer, unpackCheck, unpackSession
+  MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newSession, nextTable,
+  packCheck, packSession, quizTotals, recordTableProgress, submitCheckAnswer, unpackCheck, unpackSession,
+  unpackTableProgress
 } from './engine.js';
 import { spokenVoiceName } from './voice-name.js';
 
@@ -18,6 +19,9 @@ const ui = {
   finishText: byId('finish-description'), nextTable: byId('next-table-button'), finishTitle: byId('finish-title'),
   finishScore: byId('finish-score'), finishBack: byId('finish-back-button'), card: byId('example-card'),
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
+  masteryTitle: byId('mastery-title'), masteryCount: byId('mastery-count'), masteryScores: byId('mastery-scores'),
+  masteryClear: byId('mastery-clear'), masteryConfirmation: byId('mastery-confirmation'),
+  masteryConfirm: byId('mastery-confirm'), masteryCancel: byId('mastery-cancel'), masteryStatus: byId('mastery-status'),
   voice: byId('voice-toggle'), voiceSelect: byId('voice-select'),
   loading: byId('app-loading'), shell: document.querySelector('.shell')
 };
@@ -25,6 +29,7 @@ const delay = 10000;
 const storageKey = 'umnozhayka.session.v1';
 const checkKey = 'umnozhayka.check.v1';
 const activityKey = 'umnozhayka.activity.v1';
+const masteryKey = 'umnozhayka.table-progress.v1';
 const voiceKey = 'umnozhayka.voice.v1';
 const voiceChoiceKey = 'umnozhayka.voice-choice.v1';
 function load(key) {
@@ -62,6 +67,36 @@ function save() {
     window.localStorage.setItem(voiceKey, String(voiceEnabled));
     window.localStorage.setItem(voiceChoiceKey, selectedVoiceURI);
   } catch { /* Хранилище может быть отключено. */ }
+}
+function saveTableProgress() {
+  try {
+    const best = unpackTableProgress(window.localStorage.getItem(masteryKey));
+    const updated = recordTableProgress(best, session);
+    if (updated !== best) window.localStorage.setItem(masteryKey, JSON.stringify(updated));
+    ui.masteryStatus.textContent = '';
+  } catch {
+    ui.masteryStatus.textContent = 'Не удалось сохранить прогресс на этом устройстве.';
+  }
+}
+function renderTableProgress() {
+  const best = unpackTableProgress(load(masteryKey));
+  const mastered = best.filter(score => score === MAX_FACTOR).length;
+  ui.masteryCount.textContent = `Таблиц без ошибок: ${mastered} из ${MAX_FACTOR}`;
+  const rows = best.map((score, i) => {
+    const row = document.createElement('div');
+    const label = document.createElement('dt');
+    const value = document.createElement('dd');
+    label.textContent = `×${i + 1}`;
+    value.textContent = score === null ? '—' : `${score}/${MAX_FACTOR}`;
+    row.append(label, value);
+    return row;
+  });
+  ui.masteryScores.replaceChildren(...rows);
+  ui.masteryClear.disabled = best.every(score => score === null);
+}
+function showMasteryClear(open) {
+  ui.masteryConfirmation.classList.toggle('hidden', !open);
+  ui.masteryClear.setAttribute('aria-expanded', String(open));
 }
 function stopTimer() {
   if (timer !== null) clearInterval(timer);
@@ -291,6 +326,7 @@ function start(table, random) {
 function forward() {
   if (checking) {
     if (!advanceCheck(session)) return;
+    if (session.index === session.list.length) saveTableProgress();
     draft = '';
     render();
     (session.index === session.list.length ? ui.finishTitle : ui.checkAnswer).focus();
@@ -325,17 +361,41 @@ byId('again-button').addEventListener('click', () => start(session.table, sessio
 ui.nextTable.addEventListener('click', () => { const table = nextTable(session.table); if (table !== null) start(table, session.random); });
 ui.finishBack.addEventListener('click', backward);
 ui.settings.addEventListener('click', () => {
+  renderTableProgress();
+  ui.shell.inert = true;
   ui.settingsDialog.classList.remove('hidden');
   ui.settings.setAttribute('aria-expanded', 'true');
   ui.settingsClose.focus();
 });
 function closeSettings() {
+  showMasteryClear(false);
+  ui.shell.inert = false;
   ui.settingsDialog.classList.add('hidden');
   ui.settings.setAttribute('aria-expanded', 'false');
   ui.settings.focus();
 }
 ui.settingsClose.addEventListener('click', closeSettings);
 ui.settingsDialog.addEventListener('click', e => { if (e.target === ui.settingsDialog) closeSettings(); });
+ui.masteryClear.addEventListener('click', () => {
+  const open = ui.masteryConfirmation.classList.contains('hidden');
+  showMasteryClear(open);
+  if (open) ui.masteryCancel.focus();
+});
+ui.masteryCancel.addEventListener('click', () => {
+  showMasteryClear(false);
+  ui.masteryClear.focus();
+});
+ui.masteryConfirm.addEventListener('click', () => {
+  try {
+    window.localStorage.removeItem(masteryKey);
+    ui.masteryStatus.textContent = 'Статистика удалена.';
+  } catch {
+    ui.masteryStatus.textContent = 'Не удалось удалить статистику на этом устройстве.';
+  }
+  showMasteryClear(false);
+  renderTableProgress();
+  ui.masteryTitle.focus();
+});
 ui.voice.addEventListener('change', () => {
   voiceEnabled = ui.voice.checked;
   skipTaskSpeech = true;
@@ -377,7 +437,10 @@ function submit() {
 }
 document.addEventListener('keydown', e => {
   if (e.altKey || e.ctrlKey || e.metaKey || e.repeat) return;
-  if (e.key === 'Escape' && !ui.settingsDialog.classList.contains('hidden')) { closeSettings(); return; }
+  if (!ui.settingsDialog.classList.contains('hidden')) {
+    if (e.key === 'Escape') closeSettings();
+    return;
+  }
   if (e.target instanceof HTMLElement && ['SELECT','INPUT','TEXTAREA'].includes(e.target.tagName)) return;
   if (checking && (/^\d$/.test(e.key) || e.key === 'Backspace')) { e.preventDefault(); editDraft(e.key); }
   if (checking && e.key === 'Enter' && (e.target === document.body || e.target === ui.checkAnswer)) { e.preventDefault(); submit(); }
