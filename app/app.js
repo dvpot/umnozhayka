@@ -35,6 +35,7 @@ let check = unpackCheck(load(checkKey));
 let checking = load(activityKey) === 'check' && check !== null;
 let session = checking ? check : training;
 let draft = '';
+let draftEdited = false;
 let timer = null;
 let startedAt = 0;
 let remaining = delay;
@@ -179,9 +180,9 @@ function renderAnswerOptions(task) {
 }
 function renderDraft(submitted) {
   ui.checkAnswer.textContent = draft || '?';
-  const unchanged = submitted !== undefined && draft !== '' && Number(draft) === submitted;
-  ui.checkAnswer.classList.toggle('incorrect', unchanged && submitted !== session.list[session.index].answer);
-  ui.checkAnswer.classList.toggle('correct', unchanged && submitted === session.list[session.index].answer);
+  const graded = submitted !== undefined && !draftEdited;
+  ui.checkAnswer.classList.toggle('incorrect', graded && submitted !== session.list[session.index].answer);
+  ui.checkAnswer.classList.toggle('correct', graded && submitted === session.list[session.index].answer);
   ui.submit.disabled = draft === '';
   ui.deleteDigit.disabled = draft === '';
 }
@@ -191,6 +192,7 @@ function renderCheck(task) {
   ui.checkScore.textContent = scoreText();
   ui.keypad.classList.toggle('hidden', corrected);
   if (draft === '' && submitted !== undefined) draft = String(submitted);
+  draftEdited = false;
   renderDraft(submitted);
 }
 function render() {
@@ -348,9 +350,19 @@ ui.voiceSelect.addEventListener('change', () => {
 });
 function editDraft(key) {
   if (!checking || session.index >= session.list.length || session.index > session.answers.length) return;
-  if (key === 'Backspace') draft = draft.slice(0, -1);
-  else if (/^\d$/.test(key) && draft.length < 3) draft += key;
-  renderDraft(session.answers[session.index]);
+  const submitted = session.answers[session.index];
+  if (submitted === session.list[session.index].answer) return;
+  if (key === 'Backspace') {
+    draft = draft.slice(0, -1);
+  } else if (/^\d$/.test(key)) {
+    if (submitted !== undefined && !draftEdited) draft = key;
+    else if (draft.length < 3) draft += key;
+    else return;
+  } else {
+    return;
+  }
+  draftEdited = true;
+  renderDraft(submitted);
 }
 function randomPhrase(phrases) {
   return phrases[Math.floor(Math.random() * phrases.length)];
