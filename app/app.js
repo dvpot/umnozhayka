@@ -2,7 +2,7 @@ import {
   advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newSession, nextTable,
   packCheck, packSession, quizTotals, submitCheckAnswer, unpackCheck, unpackSession
 } from './engine.js';
-import { playRecording, stopRecording } from './recorded-speech.js';
+import { spokenVoiceName } from './voice-name.js';
 
 const byId = id => document.getElementById(id);
 const ui = {
@@ -18,7 +18,7 @@ const ui = {
   finishText: byId('finish-description'), nextTable: byId('next-table-button'), finishTitle: byId('finish-title'),
   finishScore: byId('finish-score'), finishBack: byId('finish-back-button'), card: byId('example-card'),
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
-  voice: byId('voice-toggle'), voiceSelect: byId('voice-select'), voiceInfo: byId('voice-info'), voiceHelp: byId('voice-help'),
+  voice: byId('voice-toggle'), voiceSelect: byId('voice-select'),
   loading: byId('app-loading'), shell: document.querySelector('.shell')
 };
 const delay = 10000;
@@ -40,12 +40,11 @@ let startedAt = 0;
 let remaining = delay;
 let revealed = false;
 let voiceEnabled = load(voiceKey) === 'true';
-let selectedVoiceURI = load(voiceChoiceKey) || '';
+const savedVoiceURI = load(voiceChoiceKey);
+let selectedVoiceURI = savedVoiceURI === 'umnozhayka:recorded' ? '' : (savedVoiceURI || '');
 let voices = [];
 let spokenTask;
 let skipTaskSpeech = false;
-let speechRequest = 0;
-const builtInVoice = 'umnozhayka:recorded';
 
 try {
   const telegram = window.Telegram?.WebApp;
@@ -68,48 +67,39 @@ function stopTimer() {
   timer = null;
 }
 function getSystemVoice() {
-  if (selectedVoiceURI === builtInVoice) return null;
   return voices.find(voice => voice.voiceURI === selectedVoiceURI)
     || voices.find(voice => voice.default)
     || voices[0]
     || null;
 }
-function speak(text, { settings = false, clips = [text] } = {}) {
+function speak(text, { settings = false } = {}) {
   if (!settings && (!voiceEnabled || skipTaskSpeech)) return;
-  const current = ++speechRequest;
-  stopRecording();
-  const synth = window.speechSynthesis;
-  const fallback = () => {
-    if (speechRequest === current) void playRecording(clips);
-  };
+  const voice = getSystemVoice();
+  if (!voice) return;
   try {
-    synth?.cancel?.();
-    const voice = getSystemVoice();
-    if (!voice || typeof synth?.speak !== 'function' || typeof window.SpeechSynthesisUtterance !== 'function') {
-      fallback();
-      return;
-    }
+    const synth = window.speechSynthesis;
+    synth.cancel?.();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = voice.lang;
     utterance.rate = 0.9;
     utterance.voice = voice;
-    utterance.onerror = fallback;
     synth.speak(utterance);
-  } catch {
-    fallback();
-  }
+  } catch { /* Голос может стать недоступен во время занятия. */ }
 }
 function updateVoices() {
+  const synth = window.speechSynthesis;
   try {
-    voices = (window.speechSynthesis?.getVoices?.() || [])
-      .filter(voice => /^ru(?:-|$)/i.test(voice.lang));
+    voices = typeof synth?.speak === 'function' && typeof window.SpeechSynthesisUtterance === 'function'
+      ? synth.getVoices().filter(voice => /^ru(?:-|$)/i.test(voice.lang))
+      : [];
   } catch { voices = []; }
-  ui.voiceSelect.replaceChildren(new Option(voices.length ? 'Автоматически' : 'Встроенный голос', ''));
-  if (voices.length) ui.voiceSelect.add(new Option('Встроенный голос', builtInVoice));
+  const available = voices.length > 0;
+  ui.voiceSelect.replaceChildren(new Option(available ? 'Автоматически' : 'Недоступно', ''));
   for (const voice of voices) ui.voiceSelect.add(new Option(voice.name, voice.voiceURI));
-  ui.voiceSelect.value = Array.from(ui.voiceSelect.options).some(option => option.value === selectedVoiceURI)
-    ? selectedVoiceURI : '';
-  ui.voiceSelect.disabled = voices.length === 0;
+  ui.voiceSelect.value = voices.some(voice => voice.voiceURI === selectedVoiceURI) ? selectedVoiceURI : '';
+  ui.voiceSelect.disabled = !available;
+  ui.voice.disabled = !available;
+  ui.voice.checked = available && voiceEnabled;
 }
 updateVoices();
 window.speechSynthesis?.addEventListener?.('voiceschanged', updateVoices);
@@ -122,8 +112,7 @@ function announceTask(task) {
   spokenTask = key;
   skipTaskSpeech = false;
   if (firstRender) return;
-  const prefix = `${task.a} умножить на`;
-  speak(`${prefix} ${task.b}`, { clips: [prefix, String(task.b)] });
+  speak(`${task.a} умножить на ${task.b}`);
 }
 function updateCountdown() {
   if (revealed || checking || session.mode === 'quiz') return;
@@ -181,8 +170,8 @@ function renderAnswerOptions(task) {
     button.addEventListener('click', () => {
       if (button.disabled) return;
       const outcome = chooseQuizAnswer(session, value);
-      if (outcome === 'correct') speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']), { clips: ['Верно!'] });
-      else if (outcome === 'incorrect') speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Выбери другой ответ.', 'Ничего, попробуй снова.']), { clips: ['Попробуй ещё раз.'] });
+      if (outcome === 'correct') speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
+      else if (outcome === 'incorrect') speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Выбери другой ответ.', 'Ничего, попробуй снова.']));
       render();
     });
     ui.options.append(button);
@@ -221,7 +210,6 @@ function render() {
   ui.quizControls.classList.toggle('hidden', checking || session.mode !== 'quiz');
   ui.progressTools.classList.toggle('hidden', !(checking || session.mode === 'quiz'));
   if (checking || session.mode === 'quiz') ui.checkScore.textContent = scoreText();
-  ui.voice.checked = voiceEnabled;
   save();
   if (session.index >= session.list.length) {
     ui.lesson.classList.add('hidden');
@@ -355,13 +343,8 @@ ui.voice.addEventListener('change', () => {
 ui.voiceSelect.addEventListener('change', () => {
   selectedVoiceURI = ui.voiceSelect.value;
   save();
-  const voice = getSystemVoice();
-  const greeting = 'Привет, я Умножайка.';
-  speak(voice?.name ? `Привет, я ${voice.name}.` : greeting, { settings: true, clips: [greeting] });
-});
-ui.voiceInfo.addEventListener('click', () => {
-  const open = ui.voiceHelp.classList.toggle('hidden') === false;
-  ui.voiceInfo.setAttribute('aria-expanded', String(open));
+  const name = spokenVoiceName(getSystemVoice()?.name);
+  speak(name ? `Привет, я ${name}.` : 'Привет!', { settings: true });
 });
 function editDraft(key) {
   if (!checking || session.index >= session.list.length || session.index > session.answers.length) return;
@@ -375,8 +358,8 @@ function randomPhrase(phrases) {
 function submit() {
   if (!checking || !submitCheckAnswer(session, draft)) return;
   const task = session.list[session.index];
-  if (Number(draft) === task.answer) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']), { clips: ['Верно!'] });
-  else speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Можно исправить.', 'Ничего, попробуй снова.']), { clips: ['Попробуй ещё раз.'] });
+  if (Number(draft) === task.answer) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
+  else speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Можно исправить.', 'Ничего, попробуй снова.']));
   render();
   if (session.answers[session.index] === task.answer) ui.next.focus();
 }
