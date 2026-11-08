@@ -34,7 +34,8 @@ let training = unpackSession(load(storageKey)) || newSession();
 let check = unpackCheck(load(checkKey));
 let checking = load(activityKey) === 'check' && check !== null;
 let session = checking ? check : training;
-let draft = null; // null показывает отправленный ответ, строка — новый ввод.
+let draft = '';
+let draftEdited = false;
 let timer = null;
 let startedAt = 0;
 let remaining = delay;
@@ -178,19 +179,20 @@ function renderAnswerOptions(task) {
   }
 }
 function renderDraft(submitted) {
-  const digits = draft ?? String(submitted ?? '');
-  const graded = draft === null && submitted !== undefined;
-  ui.checkAnswer.textContent = digits || '?';
+  ui.checkAnswer.textContent = draft || '?';
+  const graded = submitted !== undefined && !draftEdited;
   ui.checkAnswer.classList.toggle('incorrect', graded && submitted !== session.list[session.index].answer);
   ui.checkAnswer.classList.toggle('correct', graded && submitted === session.list[session.index].answer);
-  ui.submit.disabled = digits === '';
-  ui.deleteDigit.disabled = digits === '';
+  ui.submit.disabled = draft === '';
+  ui.deleteDigit.disabled = draft === '';
 }
 function renderCheck(task) {
   const submitted = session.answers[session.index];
   const corrected = submitted !== undefined && submitted === task.answer;
   ui.checkScore.textContent = scoreText();
   ui.keypad.classList.toggle('hidden', corrected);
+  if (draft === '' && submitted !== undefined) draft = String(submitted);
+  draftEdited = false;
   renderDraft(submitted);
 }
 function render() {
@@ -268,7 +270,7 @@ function selectActivity(value) {
     training.mode = value;
     session = training;
   }
-  draft = null;
+  draft = '';
   spokenTask = '';
   render();
 }
@@ -282,14 +284,14 @@ function start(table, random) {
     training.mode = mode;
     session = training;
   }
-  draft = null;
+  draft = '';
   spokenTask = '';
   render();
 }
 function forward() {
   if (checking) {
     if (!advanceCheck(session)) return;
-    draft = null;
+    draft = '';
     render();
     (session.index === session.list.length ? ui.finishTitle : ui.checkAnswer).focus();
     return;
@@ -351,22 +353,24 @@ function editDraft(key) {
   const submitted = session.answers[session.index];
   if (submitted === session.list[session.index].answer) return;
   if (key === 'Backspace') {
-    draft = (draft ?? String(submitted ?? '')).slice(0, -1);
-  } else if (/^\d$/.test(key) && (draft ?? '').length < 3) {
-    draft = (draft ?? '') + key;
+    draft = draft.slice(0, -1);
+  } else if (/^\d$/.test(key)) {
+    if (submitted !== undefined && !draftEdited) draft = key;
+    else if (draft.length < 3) draft += key;
+    else return;
+  } else {
+    return;
   }
+  draftEdited = true;
   renderDraft(submitted);
 }
 function randomPhrase(phrases) {
   return phrases[Math.floor(Math.random() * phrases.length)];
 }
 function submit() {
-  if (!checking) return;
-  const digits = draft ?? String(session.answers[session.index] ?? '');
-  if (!submitCheckAnswer(session, digits)) return;
-  draft = null;
+  if (!checking || !submitCheckAnswer(session, draft)) return;
   const task = session.list[session.index];
-  if (Number(digits) === task.answer) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
+  if (Number(draft) === task.answer) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
   else speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Можно исправить.', 'Ничего, попробуй снова.']));
   render();
   if (session.answers[session.index] === task.answer) ui.next.focus();
