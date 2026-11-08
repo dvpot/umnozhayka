@@ -27,6 +27,18 @@ button{border:1px solid #e1e4f5;border-bottom:4px solid #dae0f4;background:white
 .finish{text-align:center;padding:25px 18px;background:white;border:2px solid #e9eafa;border-radius:30px;box-shadow:0 9px #e0e5f7}.finish h1{color:#5848b7;font-size:clamp(27px,6vw,40px);margin:12px 0}.finish p{color:#6d749a;line-height:1.5;font-size:17px}.finish button{display:block;margin:10px auto;width:min(280px,100%)}.finish .link{border:0;background:none;font-size:14px;min-height:42px}.star{color:#ffba4b;font-size:60px}
 .settings-backdrop{position:fixed;inset:0;z-index:20;display:grid;place-items:start center;overflow-y:auto;padding:calc(18px + env(safe-area-inset-top,0px)) 14px;background:#29254e66}.settings-panel{width:min(420px,100%);max-height:calc(100dvh - 36px - env(safe-area-inset-top,0px));overflow-y:auto;padding:17px;background:white;border:1px solid #e9eafa;border-radius:20px;box-shadow:0 14px 45px #29254e3d}.settings-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.settings-heading h2{margin:0;color:#5142ae;font-size:21px}.settings-close{width:38px;height:38px;min-height:38px;padding:0;font-size:24px}.voice-setting{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:18px;padding:14px;background:#f6f5ff;border-radius:14px;font-weight:800;color:#4f5188}.voice-setting input{width:23px;height:23px;accent-color:#6959dd;flex:0 0 auto}.voice-choice{display:flex;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;background:#f6f5ff;border-radius:14px;font-weight:800;color:#4f5188}
 .voice-choice select{flex:1;min-height:39px;font-size:13px;box-shadow:none;border-color:#e1e4f5}
+.mastery{margin-top:12px;padding:12px;background:#f6f5ff;border-radius:14px;color:#4f5188;font-size:14px}
+.mastery summary{cursor:pointer;font-size:16px;font-weight:850}
+.mastery summary:focus-visible{outline:3px solid #ffba65;outline-offset:3px}
+.mastery p{margin:10px 0;line-height:1.4}
+.mastery p:empty{display:none}
+.mastery-count{font-weight:850}
+.mastery-scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:10px 0}
+.mastery-scores div{display:flex;justify-content:space-between;gap:4px;padding:7px 8px;background:#fff;border-radius:10px;font-variant-numeric:tabular-nums}
+.mastery-scores dd{margin:0;font-weight:850}
+.mastery>button{width:100%;min-height:40px;font-size:13px}
+.mastery .reset-confirmation{margin:8px 0 0}
+.mastery .reset-confirmation button{min-height:38px;font-size:13px}
 @media(max-width:370px){.header{gap:5px;padding-inline:8px}.select-holder{gap:5px}.select-caption{font-size:13px}.select-holder select{padding-left:9px;padding-right:26px;font-size:14px}.activity-holder select{font-size:11px;max-width:none}.shuffle-button{width:37px;flex-basis:37px;height:40px;padding:6px}.settings-button{width:30px;flex-basis:30px;height:40px}.card{padding-inline:38px}.card-arrow{width:30px}.card-arrow svg{width:21px}.answer-options{gap:5px}.answer-option{min-height:55px}.check-keypad{gap:5px}.check-keypad button{min-height:40px}.voice-choice{gap:6px;padding-inline:8px}.voice-choice select{padding-inline:8px 24px;font-size:12px;background-position:right 5px center}}
 @media (min-width:600px) {
   .check-keypad{width:min(320px,100%)}

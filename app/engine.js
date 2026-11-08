@@ -131,7 +131,7 @@ export function nextTable(table) {
 }
 
 export function newCheck(table, random, rng) {
-  return { ...newSession(table, random, rng), answers: [], mistakes: [] };
+  return { ...newSession(table, random, rng), answers: [], mistakes: [], tracksTableProgress: true };
 }
 
 export function submitCheckAnswer(check, digits) {
@@ -161,8 +161,36 @@ export function checkTotals(check) {
   return { correct, incorrect: check.mistakes.reduce((total, count) => total + count, 0) };
 }
 
+export function unpackTableProgress(raw) {
+  try {
+    const scores = JSON.parse(raw);
+    if (Array.isArray(scores) && scores.length === MAX_FACTOR &&
+        scores.every(score => score === null || (Number.isInteger(score) && score >= 0 && score <= MAX_FACTOR))) {
+      return scores;
+    }
+  } catch { /* Повреждённое сохранение считается пустым. */ }
+  return Array(MAX_FACTOR).fill(null);
+}
+
+export function recordTableProgress(best, check) {
+  if (!check.tracksTableProgress || check.index !== check.list.length || check.answers.length !== check.list.length) return best;
+  const scores = Array(MAX_FACTOR).fill(null);
+  check.list.forEach(({ a, answer }, i) => {
+    const firstTry = check.answers[i] === answer && check.mistakes[i] === 0;
+    scores[a - 1] = (scores[a - 1] ?? 0) + Number(firstTry);
+  });
+  const next = best.map((previous, i) => {
+    const score = scores[i];
+    return score !== null && (previous === null || score > previous) ? score : previous;
+  });
+  return next.some((score, i) => score !== best[i]) ? next : best;
+}
+
 export function packCheck(check) {
-  return JSON.stringify({ v: 5, session: JSON.parse(packSession(check)), answers: check.answers, mistakes: check.mistakes });
+  return JSON.stringify({
+    v: 5, session: JSON.parse(packSession(check)), answers: check.answers, mistakes: check.mistakes,
+    tracksTableProgress: check.tracksTableProgress
+  });
 }
 
 export function unpackCheck(raw) {
@@ -178,5 +206,7 @@ export function unpackCheck(raw) {
   const mistakes = data.v === 5 ? data.mistakes : answers.map((value, i) => Number(value !== session.list[i].answer));
   if (!Array.isArray(mistakes) || mistakes.length !== answers.length ||
       !mistakes.every((value, i) => Number.isInteger(value) && value >= Number(answers[i] !== session.list[i].answer))) return null;
-  return { ...session, answers, mistakes };
+  // Старая проверка могла потерять историю первых попыток при миграции.
+  const tracksTableProgress = data.v === 5 && data.tracksTableProgress === true;
+  return { ...session, answers, mistakes, tracksTableProgress };
 }
