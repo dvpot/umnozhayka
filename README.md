@@ -19,7 +19,7 @@ Node.js 18+. `npm ci && npm run check`. Тесты охватывают 100/10 �
 
 ## Telegram Serverless
 
-Последняя подтверждённая публикация — Serverless revision `7`, SHA `7201560a756d3183d213fa86f27becb419f0cd84` (PR #22). Приложение: <https://app8854507045.tgcloud.ai/>. История и результаты проверок — в [журнале публикаций](docs/TELEGRAM_DEPLOY.md).
+Последняя подтверждённая публикация — Serverless revision `8`, SHA `9d2e84dc2fce0facf36ebbbc8b22ed75fd6fef7a` (PR #24). Приложение: <https://app8854507045.tgcloud.ai/>. История и результаты проверок — в [журнале публикаций](docs/TELEGRAM_DEPLOY.md).
 
 Перед следующим релизом выполнить `npx tgcloud fetch`, `npx tgcloud status`, `npx tgcloud diff`, проверить app ID и содержимое; затем `npm run deploy` без `--force`. После push снова выполнить fetch/status: CLI 0.2.0 может завершиться ошибкой записи локального snapshot уже после успешной загрузки.
 
