@@ -179,6 +179,10 @@ export function recordTableProgress(best, check) {
     const firstTry = check.answers[i] === answer && check.mistakes[i] === 0;
     scores[a - 1] = (scores[a - 1] ?? 0) + Number(firstTry);
   });
+  return mergeTableProgress(best, scores);
+}
+
+export function mergeTableProgress(best, scores) {
   const next = best.map((previous, i) => {
     const score = scores[i];
     return score !== null && (previous === null || score > previous) ? score : previous;

@@ -1,5 +1,5 @@
 import {
-  MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newSession, nextTable,
+  MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, mergeTableProgress, newCheck, newSession, nextTable,
   packCheck, packSession, quizTotals, recordTableProgress, submitCheckAnswer, unpackCheck, unpackSession,
   unpackTableProgress
 } from './engine.js';
@@ -31,6 +31,10 @@ const ui = {
 const delay = 10000;
 const telegram = window.Telegram?.WebApp;
 const accountMode = Boolean(telegram?.initData);
+// Этот ID только разделяет локальные упражнения. Сервер использует проверенный контекст Telegram.
+const localAccountId = telegram?.initDataUnsafe?.user?.id;
+const activeScope = !accountMode ? '' : Number.isSafeInteger(localAccountId) && localAccountId > 0
+  ? `.telegram.${localAccountId}` : null;
 let homeOpen = true;
 let accountScores = null;
 let pendingScores = null;
@@ -45,9 +49,12 @@ const voiceChoiceKey = 'umnozhayka.voice-choice.v1';
 function load(key) {
   try { return window.localStorage.getItem(key); } catch { return null; }
 }
-let training = unpackSession(load(storageKey)) || newSession();
-let check = unpackCheck(load(checkKey));
-let checking = load(activityKey) === 'check' && check !== null;
+function loadActive(key) {
+  return activeScope === null ? null : load(key + activeScope);
+}
+let training = unpackSession(loadActive(storageKey)) || newSession();
+let check = unpackCheck(loadActive(checkKey));
+let checking = loadActive(activityKey) === 'check' && check !== null;
 let session = checking ? check : training;
 let draft = '';
 let draftEdited = false;
@@ -70,9 +77,11 @@ try {
 
 function save() {
   try {
-    window.localStorage.setItem(checking ? checkKey : storageKey, checking ? packCheck(session) : packSession(session));
-    window.localStorage.removeItem(checking ? storageKey : checkKey);
-    window.localStorage.setItem(activityKey, checking ? 'check' : 'training');
+    if (activeScope !== null) {
+      window.localStorage.setItem((checking ? checkKey : storageKey) + activeScope, checking ? packCheck(session) : packSession(session));
+      window.localStorage.removeItem((checking ? storageKey : checkKey) + activeScope);
+      window.localStorage.setItem(activityKey + activeScope, checking ? 'check' : 'training');
+    }
     window.localStorage.setItem(voiceKey, String(voiceEnabled));
     window.localStorage.setItem(voiceChoiceKey, selectedVoiceURI);
   } catch { /* Хранилище может быть отключено. */ }
@@ -127,13 +136,17 @@ function queueAccountProgress(action, scores, onSuccess, onFailure) {
 function syncCompletedCheck() {
   const snapshot = pendingScores;
   if (!snapshot) return;
-  ui.finishSync.textContent = 'Сохраняем прогресс в аккаунте…';
+  const finished = session;
+  const setFinishStatus = message => {
+    if (session === finished && checking && session.index === session.list.length) ui.finishSync.textContent = message;
+  };
+  setFinishStatus('Сохраняем прогресс в аккаунте…');
   queueAccountProgress('merge', snapshot, () => {
     if (pendingScores === snapshot) pendingScores = null;
-    ui.finishSync.textContent = 'Прогресс сохранён в аккаунте.';
+    setFinishStatus('Прогресс сохранён в аккаунте.');
     return 'Прогресс сохранён в аккаунте.';
   }, () => {
-    ui.finishSync.textContent = 'Прогресс пока не сохранён. Открой «Мой прогресс» и повтори сохранение.';
+    setFinishStatus('Прогресс пока не сохранён. Открой «Мой прогресс» и повтори сохранение.');
   });
 }
 function saveTableProgress() {
@@ -348,6 +361,7 @@ function render() {
     ui.nextTable.classList.toggle('hidden', nextTable(session.table) === null);
     return;
   }
+  ui.finishSync.textContent = '';
   ui.lesson.classList.remove('hidden');
   ui.finish.classList.add('hidden');
   const task = session.list[session.index];
@@ -511,12 +525,15 @@ ui.masteryConfirm.addEventListener('click', () => {
   showMasteryClear(false);
   ui.masteryTitle.focus();
   if (accountMode) {
+    const discarded = pendingScores;
+    pendingScores = null;
     queueAccountProgress('clear', null, () => {
-      pendingScores = null;
-      ui.finishSync.textContent = '';
+      if (!pendingScores) ui.finishSync.textContent = '';
       return removeLocalProgress()
         ? 'Статистика аккаунта удалена.'
         : 'Статистика аккаунта удалена. Локальную копию удалить не удалось.';
+    }, () => {
+      if (discarded) pendingScores = pendingScores ? mergeTableProgress(pendingScores, discarded) : discarded;
     });
   } else {
     ui.masteryStatus.textContent = removeLocalProgress()
