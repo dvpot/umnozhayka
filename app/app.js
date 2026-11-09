@@ -1,8 +1,9 @@
 import {
-  MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, mergeTableProgress, newCheck, newSession, nextTable,
-  packCheck, packSession, quizTotals, recordTableProgress, submitCheckAnswer, unpackCheck, unpackSession,
+  MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newSession, nextTable,
+  packCheck, packSession, quizTotals, recordTableProgress, roundProgress, submitCheckAnswer, unpackCheck, unpackSession,
   unpackTableProgress
 } from './engine.js';
+import { addTotals, createAccountSync, emptyTotals, newPlayId, validTotals } from './account-sync.js';
 import { spokenVoiceName } from './voice-name.js';
 
 const byId = id => document.getElementById(id);
@@ -21,10 +22,10 @@ const ui = {
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
   home: byId('home-view'), lessonHeader: byId('lesson-header'), navHome: byId('nav-home'),
   navMastery: byId('nav-mastery'), mastery: byId('mastery-view'), masteryScope: byId('mastery-scope'),
-  masteryRefresh: byId('mastery-refresh'), masteryImport: byId('mastery-import'),
-  masteryConfirmText: byId('mastery-confirm-text'), masteryTitle: byId('mastery-title'), masteryCount: byId('mastery-count'), masteryScores: byId('mastery-scores'),
-  masteryClear: byId('mastery-clear'), masteryConfirmation: byId('mastery-confirmation'),
-  masteryConfirm: byId('mastery-confirm'), masteryCancel: byId('mastery-cancel'), masteryStatus: byId('mastery-status'),
+  masteryImport: byId('mastery-import'), masteryTitle: byId('mastery-title'),
+  masteryCount: byId('mastery-count'), masteryScores: byId('mastery-scores'), masteryContent: byId('mastery-content'),
+  masteryStatus: byId('mastery-status'), gameSync: byId('game-sync'),
+  totals: ['study', 'quiz', 'check', 'solved'].map(id => byId('total-' + id)),
   voice: byId('voice-toggle'), voiceSelect: byId('voice-select'),
   loading: byId('app-loading'), shell: document.querySelector('.shell')
 };
@@ -37,13 +38,17 @@ const activeScope = !accountMode ? '' : Number.isSafeInteger(localAccountId) && 
   ? `.telegram.${localAccountId}` : null;
 let homeOpen = true;
 let accountScores = null;
-let pendingScores = null;
+let progressRequest = 0;
+let progressLoading = false;
+let syncNotice = '';
 let accountQueue = Promise.resolve();
 let accountJobs = 0;
 const storageKey = 'umnozhayka.session.v1';
 const checkKey = 'umnozhayka.check.v1';
 const activityKey = 'umnozhayka.activity.v1';
 const masteryKey = 'umnozhayka.table-progress.v1';
+const gameKey = 'umnozhayka.game.v1';
+const pendingScoresKey = 'umnozhayka.pending-best.v1';
 const voiceKey = 'umnozhayka.voice.v1';
 const voiceChoiceKey = 'umnozhayka.voice-choice.v1';
 function load(key) {
@@ -52,12 +57,51 @@ function load(key) {
 function loadActive(key) {
   return activeScope === null ? null : load(key + activeScope);
 }
-let training = unpackSession(loadActive(storageKey)) || newSession();
-let check = unpackCheck(loadActive(checkKey));
-let checking = loadActive(activityKey) === 'check' && check !== null;
-let session = checking ? check : training;
+function storeActive(key, value) {
+  if (activeScope === null) return false;
+  try {
+    window.localStorage.setItem(key + activeScope, JSON.stringify(value));
+    return true;
+  } catch { return false; }
+}
+function parseStored(raw) {
+  try { return JSON.parse(raw); } catch { return null; }
+}
+const roundPrefix = activeScope === null ? null : 'umnozhayka.round.v1' + activeScope + '.';
+function loadRounds() {
+  if (!roundPrefix) return [];
+  const rounds = [];
+  try {
+    for (const key of Object.keys(window.localStorage)) {
+      if (!key.startsWith(roundPrefix)) continue;
+      const roundId = key.slice(roundPrefix.length);
+      const totals = parseStored(load(key));
+      if (/^[a-f0-9]{32}$/.test(roundId) && validTotals(totals)) rounds.push({ roundId, totals });
+    }
+  } catch { /* Память может быть отключена. */ }
+  return rounds;
+}
+function persistRound(round) {
+  if (!roundPrefix) return;
+  try { window.localStorage.setItem(roundPrefix + round.roundId, JSON.stringify(round.totals)); } catch { /* Память может быть отключена. */ }
+}
+function removeRound(roundId) {
+  if (!roundPrefix) return;
+  try { window.localStorage.removeItem(roundPrefix + roundId); } catch { /* Повтор отправки безопасен. */ }
+}
+const gameCache = parseStored(loadActive(gameKey));
+let gameSavedLocally = Boolean(gameCache?.state);
+let totals = validTotals(gameCache?.totals) ? gameCache.totals : (accountMode ? null : emptyTotals());
+let pendingScores = unpackTableProgress(loadActive(pendingScoresKey));
+let checking = loadActive(activityKey) === 'check';
+const legacySession = checking ? unpackCheck(loadActive(checkKey)) : unpackSession(loadActive(storageKey));
+let session = legacySession || newSession();
+let roundId = newPlayId();
+if (!session.answers) checking = false;
 let draft = '';
 let draftEdited = false;
+let seen = new Set();
+let counted = session.index === session.list.length;
 let timer = null;
 let startedAt = 0;
 let remaining = delay;
@@ -75,16 +119,96 @@ try {
   telegram?.setHeaderColor?.('#6c5ce7');
 } catch { /* В обычном браузере Telegram SDK необязателен. */ }
 
-function save() {
-  try {
-    if (activeScope !== null) {
-      window.localStorage.setItem((checking ? checkKey : storageKey) + activeScope, checking ? packCheck(session) : packSession(session));
-      window.localStorage.removeItem((checking ? storageKey : checkKey) + activeScope);
-      window.localStorage.setItem(activityKey + activeScope, checking ? 'check' : 'training');
+function snapshot() {
+  return {
+    v: 1, activity: checking ? 'check' : session.mode, roundId,
+    game: JSON.parse(checking ? packCheck(session) : packSession(session)),
+    draft: checking && draftEdited ? draft : null,
+    seen: [...seen], revealed, counted, voiceEnabled, voiceURI: selectedVoiceURI
+  };
+}
+function restore(state) {
+  if (state?.v !== 1 || typeof state.roundId !== 'string' || !/^[a-f0-9]{32}$/.test(state.roundId) || typeof state.voiceEnabled !== 'boolean' || typeof state.voiceURI !== 'string' ||
+      typeof state.counted !== 'boolean' || typeof state.revealed !== 'boolean' || !Array.isArray(state.seen) ||
+      (state.draft !== null && (typeof state.draft !== 'string' || !/^\d{0,3}$/.test(state.draft)))) return false;
+  const isCheck = state.activity === 'check';
+  const data = JSON.stringify(state.game);
+  const restored = isCheck ? unpackCheck(data) : unpackSession(data);
+  if (!restored || (!isCheck && state.activity !== restored.mode)) return false;
+  session = restored;
+  checking = isCheck;
+  roundId = state.roundId;
+  draft = state.draft ?? '';
+  draftEdited = state.draft !== null;
+  seen = new Set(state.seen);
+  revealed = state.revealed;
+  counted = state.counted;
+  voiceEnabled = state.voiceEnabled;
+  selectedVoiceURI = state.voiceURI;
+  return true;
+}
+function callServerless(endpoint, input) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Telegram не ответил вовремя.')), 3500);
+    try {
+      telegram.Serverless.call(endpoint, input, (error, result) => {
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(result);
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      reject(error);
     }
-    window.localStorage.setItem(voiceKey, String(voiceEnabled));
-    window.localStorage.setItem(voiceChoiceKey, selectedVoiceURI);
-  } catch { /* Хранилище может быть отключено. */ }
+  });
+}
+const gameSync = accountMode ? createAccountSync({
+  call: async input => {
+    const result = await callServerless('accountPlay', input);
+    if (!result || (input.action !== 'record' && !Number.isSafeInteger(result.revision)) ||
+        (input.action !== 'save' && !validTotals(result.totals))) {
+      throw new Error('Некорректный ответ сервера.');
+    }
+    return result;
+  },
+  cache: gameCache,
+  seed: !gameCache?.state && legacySession ? snapshot() : null,
+  persist: cache => { gameSavedLocally = storeActive(gameKey, cache) && Boolean(cache.state); },
+  loadRounds, persistRound, removeRound,
+  onRemote: (state, conflict) => {
+    if (!restore(state)) return;
+    if (conflict) syncNotice = 'Открыта более новая игра с другого устройства.';
+    spokenTask = undefined;
+    updateVoices();
+    if (document.body.classList.contains('app-ready')) render(true);
+  },
+  onTotals: updated => { totals = updated; }
+}) : null;
+restore(gameCache?.state);
+
+async function syncGame(refresh = false) {
+  if (!gameSync) return true;
+  try {
+    await gameSync.sync(refresh);
+    ui.gameSync.textContent = syncNotice;
+    return true;
+  } catch {
+    ui.gameSync.textContent = gameSavedLocally
+      ? 'Игра сохранена на устройстве. Синхронизация пока недоступна.'
+      : 'Синхронизация игры пока недоступна.';
+    return false;
+  }
+}
+function save(delta = emptyTotals()) {
+  const state = snapshot();
+  if (gameSync) {
+    syncNotice = '';
+    gameSync.stage(state, delta);
+    void syncGame();
+  } else {
+    totals = addTotals(totals, delta);
+    storeActive(gameKey, { state, totals });
+  }
 }
 function localTableProgress() {
   return unpackTableProgress(load(masteryKey));
@@ -100,22 +224,13 @@ function removeLocalProgress() {
     return false;
   }
 }
-function callTableProgress(input) {
-  return new Promise((resolve, reject) => {
-    telegram.Serverless.call('tableProgress', input, (error, result) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      const scores = result?.scores;
-      if (!Array.isArray(scores) || scores.length !== MAX_FACTOR ||
-          !scores.every(score => score === null || (Number.isInteger(score) && score >= 0 && score <= MAX_FACTOR))) {
-        reject(new Error('Некорректный ответ сервера.'));
-        return;
-      }
-      resolve(scores);
-    });
-  });
+async function callTableProgress(input) {
+  const { scores } = await callServerless('tableProgress', input);
+  if (!Array.isArray(scores) || scores.length !== MAX_FACTOR ||
+      !scores.every(score => score === null || (Number.isInteger(score) && score >= 0 && score <= MAX_FACTOR))) {
+    throw new Error('Некорректный ответ сервера.');
+  }
+  return scores;
 }
 function queueAccountProgress(action, scores, onSuccess, onFailure) {
   accountJobs++;
@@ -123,30 +238,37 @@ function queueAccountProgress(action, scores, onSuccess, onFailure) {
   accountQueue = accountQueue.then(async () => {
     try {
       accountScores = await callTableProgress(scores ? { action, scores } : { action });
-      ui.masteryStatus.textContent = onSuccess?.() ?? (pendingScores ? 'Есть результат, ожидающий сохранения.' : '');
+      const message = onSuccess?.();
+      if (!progressLoading) ui.masteryStatus.textContent = message ?? '';
+      return true;
     } catch {
-      ui.masteryStatus.textContent = 'Не удалось связаться с хранилищем Telegram. Попробуй ещё раз.';
+      if (!progressLoading) ui.masteryStatus.textContent = 'Не удалось связаться с хранилищем Telegram. Попробуй ещё раз.';
       onFailure?.();
+      return false;
     } finally {
       accountJobs--;
       renderTableProgress();
     }
   });
+  return accountQueue;
 }
 function syncCompletedCheck() {
   const snapshot = pendingScores;
-  if (!snapshot) return;
+  if (!hasScores(snapshot)) return Promise.resolve(true);
   const finished = session;
   const setFinishStatus = message => {
     if (session === finished && checking && session.index === session.list.length) ui.finishSync.textContent = message;
   };
   setFinishStatus('Сохраняем прогресс в аккаунте…');
-  queueAccountProgress('merge', snapshot, () => {
-    if (pendingScores === snapshot) pendingScores = null;
+  return queueAccountProgress('merge', snapshot, () => {
+    if (pendingScores === snapshot) {
+      pendingScores = unpackTableProgress(null);
+      storeActive(pendingScoresKey, pendingScores);
+    }
     setFinishStatus('Прогресс сохранён в аккаунте.');
     return 'Прогресс сохранён в аккаунте.';
   }, () => {
-    setFinishStatus('Прогресс пока не сохранён. Открой «Мой прогресс» и повтори сохранение.');
+    setFinishStatus('Прогресс пока не сохранён. Открой «Мой прогресс», чтобы повторить сохранение.');
   });
 }
 function saveTableProgress() {
@@ -154,6 +276,7 @@ function saveTableProgress() {
   if (accountMode) {
     const best = pendingScores ?? unpackTableProgress(null);
     pendingScores = recordTableProgress(best, session);
+    storeActive(pendingScoresKey, pendingScores);
     syncCompletedCheck();
     return;
   }
@@ -172,9 +295,13 @@ function renderTableProgress() {
   const mastered = best.filter(score => score === MAX_FACTOR).length;
   const busy = accountJobs > 0;
   ui.masteryScope.textContent = accountMode ? 'Прогресс аккаунта Telegram' : 'Прогресс на этом устройстве';
-  ui.masteryCount.textContent = accountMode && !accountScores
-    ? (busy ? 'Загружаем прогресс…' : 'Прогресс аккаунта ещё не загружен.')
-    : `Таблиц без ошибок: ${mastered} из ${MAX_FACTOR}`;
+  ui.masteryContent.classList.toggle('hidden', progressLoading || (accountMode && !accountScores));
+  ui.masteryContent.setAttribute('aria-busy', String(progressLoading));
+  ui.masteryCount.textContent = `Лучшие результаты проверок · без ошибок: ${mastered} из ${MAX_FACTOR} таблиц`;
+  const [studySeen, studyTotal, quizCorrect, quizTotal, checkCorrect, checkTotal] = totals ?? emptyTotals();
+  const ratios = [[studySeen, studyTotal], [quizCorrect, quizTotal], [checkCorrect, checkTotal],
+    [quizCorrect + checkCorrect, quizTotal + checkTotal]];
+  ui.totals.forEach((element, i) => { element.textContent = totals ? ratios[i].join(' / ') : '—'; });
   const rows = best.map((score, i) => {
     const row = document.createElement('div');
     const label = document.createElement('dt');
@@ -185,20 +312,21 @@ function renderTableProgress() {
     return row;
   });
   ui.masteryScores.replaceChildren(...rows);
-  ui.masteryRefresh.classList.toggle('hidden', !accountMode);
-  ui.masteryRefresh.textContent = pendingScores ? 'Повторить сохранение' : 'Обновить';
-  ui.masteryRefresh.disabled = busy;
   ui.masteryImport.classList.toggle('hidden', !accountMode || !hasScores(local));
-  ui.masteryImport.disabled = busy;
-  ui.masteryClear.disabled = busy || !(hasScores(best) || hasScores(local) || pendingScores);
-  ui.masteryConfirm.disabled = busy;
-  ui.masteryConfirmText.textContent = accountMode
-    ? 'Удалить статистику аккаунта на всех устройствах и старую копию на этом устройстве?'
-    : 'Удалить все результаты по таблицам на этом устройстве?';
+  ui.masteryImport.disabled = busy || progressLoading;
 }
-function showMasteryClear(open) {
-  ui.masteryConfirmation.classList.toggle('hidden', !open);
-  ui.masteryClear.setAttribute('aria-expanded', String(open));
+async function refreshProgress() {
+  const request = ++progressRequest;
+  progressLoading = true;
+  ui.masteryStatus.textContent = 'Обновляем прогресс…';
+  renderTableProgress();
+  await syncCompletedCheck();
+  const [gameOK, bestOK] = await Promise.all([syncGame(true), queueAccountProgress('read')]);
+  if (request !== progressRequest) return;
+  progressLoading = false;
+  ui.masteryStatus.textContent = gameOK && bestOK && !hasScores(pendingScores)
+    ? '' : 'Не всё удалось обновить. Открой раздел ещё раз, чтобы повторить.';
+  renderTableProgress();
 }
 function stopTimer() {
   if (timer !== null) clearInterval(timer);
@@ -258,9 +386,7 @@ function updateCountdown() {
   ui.fill.style.width = (100 * elapsed / delay) + '%';
   ui.bar.setAttribute('aria-valuenow', String(Math.floor(elapsed / 1000)));
 }
-function reveal() {
-  if (checking || revealed || document.hidden || session.index >= session.list.length) return;
-  stopTimer();
+function showAnswer() {
   revealed = true;
   ui.answer.disabled = true;
   const answer = String(session.list[session.index].answer);
@@ -270,7 +396,14 @@ function reveal() {
   ui.answer.title = 'Ответ: ' + answer;
   ui.fill.style.width = '100%';
   ui.bar.setAttribute('aria-valuenow', '10');
-  speak(answer);
+}
+function reveal() {
+  if (checking || revealed || document.hidden || session.index >= session.list.length) return;
+  stopTimer();
+  showAnswer();
+  seen.add(session.list[session.index].id);
+  save();
+  speak(ui.answer.textContent);
 }
 function runTimer() {
   if (!homeOpen || timer !== null || document.hidden || revealed || checking || session.mode === 'quiz' || session.index >= session.list.length) return;
@@ -328,11 +461,10 @@ function renderCheck(task) {
   const corrected = submitted !== undefined && submitted === task.answer;
   ui.checkScore.textContent = scoreText();
   ui.keypad.classList.toggle('hidden', corrected);
-  if (draft === '' && submitted !== undefined) draft = String(submitted);
-  draftEdited = false;
+  if (!draftEdited && draft === '' && submitted !== undefined) draft = String(submitted);
   renderDraft(submitted);
 }
-function render() {
+function render(restoring = false) {
   stopTimer();
   ui.resetConfirmation.classList.add('hidden');
   ui.reset.setAttribute('aria-expanded', 'false');
@@ -349,7 +481,6 @@ function render() {
   ui.quizControls.classList.toggle('hidden', checking || session.mode !== 'quiz');
   ui.progressTools.classList.toggle('hidden', !(checking || session.mode === 'quiz'));
   if (checking || session.mode === 'quiz') ui.checkScore.textContent = scoreText();
-  save();
   if (session.index >= session.list.length) {
     ui.lesson.classList.add('hidden');
     ui.finish.classList.remove('hidden');
@@ -359,6 +490,11 @@ function render() {
     if (checking || session.mode === 'quiz') ui.finishScore.textContent = scoreText();
     ui.finishBack.classList.toggle('hidden', checking);
     ui.nextTable.classList.toggle('hidden', nextTable(session.table) === null);
+    if (!restoring) {
+      const delta = counted ? emptyTotals() : roundProgress(checking ? 'check' : session.mode, session, seen);
+      counted = true;
+      save(delta);
+    }
     return;
   }
   ui.finishSync.textContent = '';
@@ -379,8 +515,10 @@ function render() {
   ui.next.disabled = checking ? session.index >= session.answers.length : session.mode === 'quiz' && !result.solved;
   if (checking) {
     renderCheck(task);
+    if (!restoring) save();
     return;
   }
+  const showRestoredAnswer = restoring && revealed;
   remaining = delay;
   revealed = false;
   ui.answer.classList.remove('revealed');
@@ -391,38 +529,26 @@ function render() {
   ui.fill.style.width = '0%';
   ui.bar.setAttribute('aria-valuenow', '0');
   if (session.mode === 'quiz') renderAnswerOptions(task);
+  else if (showRestoredAnswer) showAnswer();
   else runTimer();
+  if (!restoring) save();
 }
 function showReset(open) {
   ui.resetConfirmation.classList.toggle('hidden', !open);
   ui.reset.setAttribute('aria-expanded', String(open));
 }
 function selectActivity(value) {
-  const { table, random } = session;
   checking = value === 'check';
-  if (checking) {
-    check = newCheck(table, random);
-    session = check;
-  } else {
-    training = newSession(table, random);
-    training.mode = value;
-    session = training;
-  }
-  draft = '';
-  spokenTask = '';
-  render();
+  start(session.table, session.random, value);
 }
-function start(table, random) {
-  if (checking) {
-    check = newCheck(table, random);
-    session = check;
-  } else {
-    const mode = training.mode;
-    training = newSession(table, random);
-    training.mode = mode;
-    session = training;
-  }
+function start(table, random, activity = session.mode) {
+  session = checking ? newCheck(table, random) : newSession(table, random);
+  if (!checking) session.mode = activity;
   draft = '';
+  draftEdited = false;
+  seen = new Set();
+  counted = false;
+  roundId = newPlayId();
   spokenTask = '';
   render();
 }
@@ -434,6 +560,7 @@ function forward() {
       saveTableProgress();
     }
     draft = '';
+    draftEdited = false;
     render();
     (session.index === session.list.length ? ui.finishTitle : ui.checkAnswer).focus();
     return;
@@ -443,7 +570,7 @@ function forward() {
   render();
 }
 function backward() {
-  if (checking || session.index <= 0 || (session.mode === 'quiz' && !session.quizResults[session.index].solved)) return;
+  if (checking || session.index <= 0 || (session.mode === 'quiz' && session.index < session.list.length && !session.quizResults[session.index].solved)) return;
   session.index--;
   render();
 }
@@ -474,19 +601,21 @@ function selectView(showHome) {
   ui.mastery.classList.toggle('hidden', showHome);
   (showHome ? ui.navMastery : ui.navHome).removeAttribute('aria-current');
   (showHome ? ui.navHome : ui.navMastery).setAttribute('aria-current', 'page');
-  showMasteryClear(false);
   window.scrollTo(0, 0);
   if (showHome) {
     runTimer();
   } else {
     pauseTimer();
-    if (accountMode) queueAccountProgress('read');
+    if (accountMode) void refreshProgress();
     else renderTableProgress();
     ui.masteryTitle.focus();
   }
 }
 ui.navHome.addEventListener('click', () => selectView(true));
-ui.navMastery.addEventListener('click', () => selectView(false));
+ui.navMastery.addEventListener('click', () => {
+  if (!homeOpen && accountMode && !progressLoading) void refreshProgress();
+  else selectView(false);
+});
 ui.settings.addEventListener('click', () => {
   ui.shell.inert = true;
   ui.settingsDialog.classList.remove('hidden');
@@ -501,46 +630,12 @@ function closeSettings() {
 }
 ui.settingsClose.addEventListener('click', closeSettings);
 ui.settingsDialog.addEventListener('click', e => { if (e.target === ui.settingsDialog) closeSettings(); });
-ui.masteryClear.addEventListener('click', () => {
-  const open = ui.masteryConfirmation.classList.contains('hidden');
-  showMasteryClear(open);
-  if (open) ui.masteryCancel.focus();
-});
-ui.masteryCancel.addEventListener('click', () => {
-  showMasteryClear(false);
-  ui.masteryClear.focus();
-});
-ui.masteryRefresh.addEventListener('click', () => {
-  if (pendingScores) syncCompletedCheck();
-  else queueAccountProgress('read');
-});
 ui.masteryImport.addEventListener('click', () => {
   const local = localTableProgress();
   if (!hasScores(local)) return;
   queueAccountProgress('merge', local, () => removeLocalProgress()
     ? 'Результаты перенесены в аккаунт.'
     : 'Результаты перенесены, но локальную копию удалить не удалось.');
-});
-ui.masteryConfirm.addEventListener('click', () => {
-  showMasteryClear(false);
-  ui.masteryTitle.focus();
-  if (accountMode) {
-    const discarded = pendingScores;
-    pendingScores = null;
-    queueAccountProgress('clear', null, () => {
-      if (!pendingScores) ui.finishSync.textContent = '';
-      return removeLocalProgress()
-        ? 'Статистика аккаунта удалена.'
-        : 'Статистика аккаунта удалена. Локальную копию удалить не удалось.';
-    }, () => {
-      if (discarded) pendingScores = pendingScores ? mergeTableProgress(pendingScores, discarded) : discarded;
-    });
-  } else {
-    ui.masteryStatus.textContent = removeLocalProgress()
-      ? 'Статистика удалена.'
-      : 'Не удалось удалить статистику на этом устройстве.';
-    renderTableProgress();
-  }
 });
 ui.voice.addEventListener('change', () => {
   voiceEnabled = ui.voice.checked;
@@ -569,6 +664,7 @@ function editDraft(key) {
   }
   draftEdited = true;
   renderDraft(submitted);
+  save();
 }
 function randomPhrase(phrases) {
   return phrases[Math.floor(Math.random() * phrases.length)];
@@ -578,6 +674,7 @@ function submit() {
   const task = session.list[session.index];
   if (Number(draft) === task.answer) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
   else speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Можно исправить.', 'Ничего, попробуй снова.']));
+  draftEdited = false;
   render();
   if (session.answers[session.index] === task.answer) ui.next.focus();
 }
@@ -627,12 +724,19 @@ ui.card.addEventListener('click', e => {
 ui.card.addEventListener('pointercancel', () => { startPoint = null; });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) pauseTimer();
-  else if (homeOpen && !revealed && session.index < session.list.length) {
-    if (remaining <= 0) reveal();
-    else { updateCountdown(); runTimer(); }
+  else {
+    if (homeOpen) {
+      runTimer();
+      if (accountMode) void syncGame(true);
+    } else if (accountMode) void refreshProgress();
   }
 });
-render();
+window.addEventListener('online', () => {
+  if (accountMode && !homeOpen) void refreshProgress();
+  else if (accountMode) void syncGame(true);
+});
+await syncGame(true);
+render(true);
 ui.shell.setAttribute('aria-hidden', 'false');
 ui.loading.setAttribute('aria-hidden', 'true');
 requestAnimationFrame(() => document.body.classList.add('app-ready'));

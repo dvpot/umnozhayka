@@ -1,4 +1,4 @@
-import { integer, table } from 'sdk/db';
+import { integer, table, text } from 'sdk/db';
 
 // Только технический ключ аккаунта и лучшие результаты. Без профилей и истории.
 export const tableProgress = table('table_progress', {
@@ -13,4 +13,18 @@ export const tableProgress = table('table_progress', {
   x8: integer('x8'),
   x9: integer('x9'),
   x10: integer('x10')
+});
+
+export const accountPlay = table('account_play', {
+  accountId: integer('account_id').primaryKey(),
+  revision: integer('revision').notNull(),
+  writeId: text('write_id').notNull(),
+  state: text('state').notNull()
+});
+
+export const accountRound = table('account_round', {
+  roundKey: text('round_key').primaryKey(),
+  mode: integer('mode').notNull(),
+  correct: integer('correct').notNull(),
+  total: integer('total').notNull()
 });

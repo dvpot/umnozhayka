@@ -9,11 +9,6 @@ export async function handleTableProgress(db, input, ctx, RequestError = Error) 
   if (!Number.isSafeInteger(id) || id <= 0) throw new RequestError('Нужен аккаунт Telegram.');
   const params = { ':id': id };
 
-  if (input?.action === 'clear') {
-    await db.run('DELETE FROM table_progress WHERE account_id = :id', params);
-    return { scores: columns.map(() => null) };
-  }
-
   let row;
   if (input?.action === 'read') {
     row = await db.get(`SELECT ${columnList} FROM table_progress WHERE account_id = :id`, params);
