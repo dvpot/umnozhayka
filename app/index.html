@@ -18,7 +18,7 @@
     <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
   </div>
   <div class="shell" aria-hidden="true">
-    <header class="header" aria-label="Настройки занятия">
+    <header id="lesson-header" class="header" aria-label="Настройки занятия">
       <label class="select-holder">
         <span class="select-caption">Учим</span>
         <select id="table-select" aria-label="Какую таблицу учим">
@@ -43,7 +43,7 @@
       <button id="settings-button" class="settings-button" type="button" aria-label="Настройки" aria-haspopup="dialog" aria-expanded="false">⋯</button>
     </header>
     <main id="playground" class="playground">
-      <div class="activity">
+      <div id="home-view" class="activity">
         <section id="lesson-screen" class="lesson" aria-label="Пример">
           <div class="card" id="example-card">
             <span id="progress-text" class="counter">1 из 100</span>
@@ -90,12 +90,33 @@
           <h1 id="finish-title" tabindex="-1">Отличная работа!</h1>
           <p id="finish-description"></p>
           <p id="finish-score" class="check-score hidden"></p>
+          <p id="finish-sync" class="sync-status" role="status"></p>
           <button id="again-button" class="primary" type="button">Повторить заново ↻</button>
           <button id="next-table-button" class="secondary" type="button">Следующая таблица →</button>
           <button id="finish-back-button" class="link" type="button">← К последнему примеру</button>
         </section>
       </div>
+      <section id="mastery-view" class="activity mastery hidden" aria-labelledby="mastery-title">
+        <h1 id="mastery-title" tabindex="-1">Мой прогресс</h1>
+        <p>Лучший результат каждой таблицы из завершённой «Проверки». Считаются примеры, решённые с первого раза. «—» означает, что результата пока нет.</p>
+        <p id="mastery-scope" class="mastery-scope"></p>
+        <p id="mastery-count" class="mastery-count"></p>
+        <dl id="mastery-scores" class="mastery-scores" aria-label="Результаты по таблицам"></dl>
+        <button id="mastery-refresh" class="hidden" type="button">Обновить</button>
+        <button id="mastery-import" class="hidden" type="button">Перенести результаты с этого устройства</button>
+        <button id="mastery-clear" type="button" aria-controls="mastery-confirmation" aria-expanded="false">Удалить статистику</button>
+        <div id="mastery-confirmation" class="reset-confirmation hidden" role="group" aria-label="Подтверждение удаления статистики">
+          <span id="mastery-confirm-text">Удалить все результаты по таблицам на этом устройстве?</span>
+          <button id="mastery-confirm" type="button">Да, удалить</button>
+          <button id="mastery-cancel" type="button">Отмена</button>
+        </div>
+        <p id="mastery-status" class="sync-status" role="status"></p>
+      </section>
     </main>
+    <nav class="bottom-nav" aria-label="Разделы Умножайки">
+      <button id="nav-home" type="button" aria-controls="home-view" aria-current="page">Главная</button>
+      <button id="nav-mastery" type="button" aria-controls="mastery-view">Мой прогресс</button>
+    </nav>
   </div>
   <div id="settings-dialog" class="settings-backdrop hidden" role="presentation">
     <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -105,19 +126,6 @@
         <label for="voice-select">Голос</label>
         <select id="voice-select"><option value="">Автоматически</option></select>
       </div>
-      <details class="mastery">
-        <summary id="mastery-title">Мой прогресс</summary>
-        <p>Сколько примеров получилось решить с первого раза. Для каждой таблицы сохраняется лучший результат завершённой «Проверки». Учитываются проверки, начатые после появления раздела. «—» — пока нет результата.</p>
-        <p id="mastery-count" class="mastery-count"></p>
-        <dl id="mastery-scores" class="mastery-scores" aria-label="Результаты по таблицам"></dl>
-        <button id="mastery-clear" type="button" aria-controls="mastery-confirmation" aria-expanded="false">Удалить статистику</button>
-        <div id="mastery-confirmation" class="reset-confirmation hidden" role="group" aria-label="Подтверждение удаления статистики">
-          <span>Удалить все результаты по таблицам на этом устройстве?</span>
-          <button id="mastery-confirm" type="button">Да, удалить</button>
-          <button id="mastery-cancel" type="button">Отмена</button>
-        </div>
-        <p id="mastery-status" role="status"></p>
-      </details>
     </section>
   </div>
 </body>
