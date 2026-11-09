@@ -108,12 +108,11 @@
           </dl>
           <div class="mastery-heading">
             <h2>Последний проход</h2>
-            <select id="mastery-mode" aria-label="Режим последнего прохода">
-              <option value="check">Проверка</option>
-              <option value="quiz">Выбери ответ</option>
-            </select>
+            <div id="mastery-modes" class="mastery-modes" role="group" aria-label="Режим последнего прохода">
+              <button type="button" data-mode="quiz" aria-pressed="false">Выбери ответ</button>
+              <button type="button" data-mode="check" aria-pressed="true">Проверка</button>
+            </div>
           </div>
-          <p class="mastery-note">Верно с первой попытки</p>
           <dl id="mastery-scores" class="mastery-scores" aria-label="Последние результаты по таблицам"></dl>
         </div>
       </section>

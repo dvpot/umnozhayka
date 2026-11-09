@@ -35,10 +35,13 @@ button{border:1px solid #e1e4f5;border-bottom:4px solid #dae0f4;background:white
 .sync-status:empty{display:none}
 .mastery p{margin:10px 0;line-height:1.4}
 .mastery p:empty{display:none}
-.mastery-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px}
-.mastery-heading h2{margin:0;font-size:16px}
-.mastery-heading select{min-width:0;font-size:13px}
-.mastery .mastery-note{font-size:12px;margin:5px 0}
+.mastery-heading{display:flex;align-items:center;justify-content:space-between;gap:4px}
+.mastery-heading h2{margin:0;font-size:clamp(11px,4vw,16px);white-space:nowrap}
+.mastery-modes{display:flex;gap:4px;min-width:0}
+.mastery-modes button{min-height:32px;padding:3px clamp(4px,1.5vw,9px);border-radius:9px;font-size:clamp(10px,3.3vw,13px);line-height:1.15}
+.mastery-modes button[aria-pressed="true"]{background:#e8e3ff;border-color:#b9adf2;color:#4332a5}
+.mastery-totals dd{text-align:right}
+@media (max-width:340px){.mastery{padding-inline:10px}.mastery-modes button{padding-inline:3px}}
 .mastery-scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:10px 0}
 .mastery-scores div{display:flex;justify-content:space-between;gap:4px;padding:7px 8px;background:#fff;border-radius:10px;font-variant-numeric:tabular-nums}
 .mastery-scores dd{margin:0;font-weight:850}

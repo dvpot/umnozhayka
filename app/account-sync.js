@@ -6,7 +6,7 @@ export const newPlayId = () => Array.from(crypto.getRandomValues(new Uint8Array(
 
 export function createAccountSync({ call, cache, seed, persist, onRemote, onTotals,
   loadRounds = () => [], persistRound = () => {}, removeRound = () => {} }) {
-  let { revision = null, pending = null, staged = null, state = null, totals = null, latest = null } = cache ?? {};
+  let { revision = null, pending = null, staged = null, state = null, totals = null, latest = null, errors = null } = cache ?? {};
   const rounds = new Map();
   function loadOutbox() {
     for (const round of loadRounds()) rounds.set(round.key ?? round.roundId, round);
@@ -14,14 +14,15 @@ export function createAccountSync({ call, cache, seed, persist, onRemote, onTota
   loadOutbox();
   let work = null;
   let refreshRequested = false;
-  const store = () => persist({ revision, pending, staged, state, totals, latest });
+  const store = () => persist({ revision, pending, staged, state, totals, latest, errors });
 
   function receive(result, replace, conflict = false) {
     revision = result.revision;
     if (result.totals) {
       totals = result.totals;
       latest = result.latest ?? latest;
-      onTotals(totals, latest);
+      errors = result.errors ?? errors;
+      onTotals(totals, latest, errors);
     }
     if (replace && result.state) {
       state = result.state;
@@ -34,10 +35,12 @@ export function createAccountSync({ call, cache, seed, persist, onRemote, onTota
     while (pending || staged || rounds.size || refreshRequested) {
       if (rounds.size) {
         const first = rounds.values().next().value;
-        const batch = first.key
-          ? [...rounds].filter(([, round]) => round.key && round.roundId === first.roundId)
+        const { key, wrong, ...input } = first;
+        const batch = key
+          ? [...rounds].filter(([, round]) => round.key && round.roundId === first.roundId &&
+            typeof round.wrong === typeof wrong).slice(0, 100)
           : [[first.roundId, first]];
-        const { key, ...input } = first;
+        if (typeof wrong === 'boolean') input.wrongIds = batch.filter(([, round]) => round.wrong).map(([id]) => id);
         for (const [, round] of batch.slice(1)) {
           input.played = input.played.map((word, i) => Number(BigInt(word) | BigInt(round.played[i])));
           input.solved = input.solved.map((word, i) => Number(BigInt(word) | BigInt(round.solved[i])));
@@ -54,7 +57,8 @@ export function createAccountSync({ call, cache, seed, persist, onRemote, onTota
         if (result.latest || !latest) {
           totals = result.totals;
           latest = result.latest ?? latest;
-          onTotals(totals, latest);
+          errors = result.errors ?? errors;
+          onTotals(totals, latest, errors);
         }
         store();
       } else if (revision === null || (!pending && !staged)) {
