@@ -28,3 +28,20 @@ export const accountRound = table('account_round', {
   correct: integer('correct').notNull(),
   total: integer('total').notNull()
 });
+
+export const accountRoundProgress = table('account_round_progress', {
+  roundKey: text('round_key').primaryKey(),
+  mode: integer('mode').notNull(),
+  playedLo: integer('played_lo').notNull(),
+  playedHi: integer('played_hi').notNull(),
+  solvedLo: integer('solved_lo').notNull(),
+  solvedHi: integer('solved_hi').notNull()
+});
+
+export const accountRoundResult = table('account_round_result', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  roundKey: text('round_key').notNull().unique(),
+  mode: integer('mode').notNull(),
+  completedAt: integer('completed_at').notNull(),
+  scores: text('scores').notNull()
+});

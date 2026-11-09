@@ -1,27 +1,27 @@
 export const emptyTotals = () => [0, 0, 0, 0, 0, 0];
 export const validTotals = totals => Array.isArray(totals) && totals.length === 6 &&
   totals.every(n => Number.isSafeInteger(n) && n >= 0);
-export const addTotals = (previous, delta) => previous.map((total, i) => total + delta[i]);
 export const newPlayId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)),
   byte => byte.toString(16).padStart(2, '0')).join('');
 
 export function createAccountSync({ call, cache, seed, persist, onRemote, onTotals,
   loadRounds = () => [], persistRound = () => {}, removeRound = () => {} }) {
-  let { revision = null, pending = null, staged = null, state = null, totals = null } = cache ?? {};
+  let { revision = null, pending = null, staged = null, state = null, totals = null, latest = null } = cache ?? {};
   const rounds = new Map();
   function loadOutbox() {
-    for (const round of loadRounds()) rounds.set(round.roundId, round);
+    for (const round of loadRounds()) rounds.set(round.key ?? round.roundId, round);
   }
   loadOutbox();
   let work = null;
   let refreshRequested = false;
-  const store = () => persist({ revision, pending, staged, state, totals });
+  const store = () => persist({ revision, pending, staged, state, totals, latest });
 
   function receive(result, replace, conflict = false) {
     revision = result.revision;
     if (result.totals) {
       totals = result.totals;
-      onTotals(totals);
+      latest = result.latest ?? latest;
+      onTotals(totals, latest);
     }
     if (replace && result.state) {
       state = result.state;
@@ -33,12 +33,29 @@ export function createAccountSync({ call, cache, seed, persist, onRemote, onTota
   async function drain() {
     while (pending || staged || rounds.size || refreshRequested) {
       if (rounds.size) {
-        const round = rounds.values().next().value;
-        const result = await call({ action: 'record', ...round });
-        rounds.delete(round.roundId);
-        removeRound(round.roundId);
-        totals = result.totals;
-        onTotals(totals);
+        const first = rounds.values().next().value;
+        const batch = first.key
+          ? [...rounds].filter(([, round]) => round.key && round.roundId === first.roundId)
+          : [[first.roundId, first]];
+        const { key, ...input } = first;
+        for (const [, round] of batch.slice(1)) {
+          input.played = input.played.map((word, i) => Number(BigInt(word) | BigInt(round.played[i])));
+          input.solved = input.solved.map((word, i) => Number(BigInt(word) | BigInt(round.solved[i])));
+          if (round.scores) {
+            input.scores = round.scores;
+            input.completedAt = round.completedAt;
+          }
+        }
+        const result = await call({ action: key ? 'recordLive' : 'record', ...input });
+        for (const [entryKey] of batch) {
+          rounds.delete(entryKey);
+          removeRound(entryKey);
+        }
+        if (result.latest || !latest) {
+          totals = result.totals;
+          latest = result.latest ?? latest;
+          onTotals(totals, latest);
+        }
         store();
       } else if (revision === null || (!pending && !staged)) {
         refreshRequested = false;
@@ -69,11 +86,11 @@ export function createAccountSync({ call, cache, seed, persist, onRemote, onTota
   }
 
   return {
-    stage(snapshot, delta) {
+    stage(snapshot, progress) {
       state = staged = snapshot;
-      if (delta.some(n => n > 0)) {
-        const round = { roundId: snapshot.roundId, totals: delta };
-        rounds.set(round.roundId, round);
+      if (progress) {
+        const round = { ...progress, roundId: snapshot.roundId, key: newPlayId() };
+        rounds.set(round.key, round);
         persistRound(round);
       }
       store();

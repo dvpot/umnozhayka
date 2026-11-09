@@ -1,21 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { newSession, packSession, roundProgress } from '../app/engine.js';
+import { newSession, packSession } from '../app/engine.js';
 import { handleAccountPlay } from '../tgcloud/lib/account-play.js';
 
 const empty = [0, 0, 0, 0, 0, 0];
 const ctx = id => ({ initData: { user: { id } } });
-
-test('round totals separate viewed training from first-attempt answers', () => {
-  const session = newSession(2);
-  assert.deepEqual(roundProgress('study', session, new Set()), empty);
-  session.index = session.list.length;
-  assert.deepEqual(roundProgress('study', session, new Set([session.list[0].id])), [1, 10, 0, 0, 0, 0]);
-  session.quizResults.forEach(result => { result.solved = true; });
-  session.quizResults[0].mistakes = 1;
-  assert.deepEqual(roundProgress('quiz', session, new Set()), [0, 0, 9, 10, 0, 0]);
-});
 
 test('SQLite isolates signed accounts, rejects stale snapshots and deduplicates completed rounds', async () => {
   const sql = new DatabaseSync(':memory:');
@@ -65,14 +55,17 @@ test('client retries a completed round after a lost acknowledgement and preserve
   const buildClient = () => createAccountSync({
     cache, persist: next => { cache = structuredClone(next); },
     loadRounds: () => [...outbox.values()],
-    persistRound: round => outbox.set(round.roundId, round),
+    persistRound: round => outbox.set(round.key, round),
     removeRound: roundId => outbox.delete(roundId),
     onRemote() {}, onTotals() {},
     async call(input) {
-      if (input.action === 'record' && !rounds.has(input.roundId)) rounds.set(input.roundId, input.totals);
+      if (input.action === 'recordLive') {
+        const prior = rounds.get(input.roundId);
+        rounds.set(input.roundId, [0, 0, (prior?.[2] ?? 0) | input.solved[0], (prior?.[3] ?? 0) | input.played[0], 0, 0]);
+      }
       const totals = [...rounds.values()].reduce((previous, delta) => previous.map((n, i) => n + delta[i]), empty);
       if (input.action === 'read') return { ...remote, totals };
-      if (input.action === 'record') {
+      if (input.action === 'recordLive') {
         if (failAfterCommit) {
           failAfterCommit = false;
           throw new Error('Response lost');
@@ -86,15 +79,16 @@ test('client retries a completed round after a lost acknowledgement and preserve
   let client = buildClient();
   await client.sync(true);
   const otherWindow = buildClient();
-  client.stage({ index: 10, roundId: 'round-a' }, [0, 0, 9, 10, 0, 0]);
+  client.stage({ index: 10, roundId: 'round-a' }, { mode: 2, played: [8, 0], solved: [0, 0], scores: null });
   await assert.rejects(client.sync(), /Response lost/);
-  otherWindow.stage({ index: 1, roundId: 'round-b' }, empty);
-  assert.equal(outbox.size, 1);
+  client.stage({ index: 10, roundId: 'round-a' }, { mode: 2, played: [2, 0], solved: [2, 0], scores: null });
+  otherWindow.stage({ index: 1, roundId: 'round-b' });
+  assert.equal(outbox.size, 2);
   remote = { revision: ++revision, writeId: 'write-b', state: { index: 5, roundId: 'round-b' } };
   client = buildClient();
   await client.sync(true);
   assert.deepEqual(cache.state, remote.state);
-  assert.deepEqual(cache.totals, [0, 0, 9, 10, 0, 0]);
+  assert.deepEqual(cache.totals, [0, 0, 2, 10, 0, 0]);
   assert.equal(rounds.size, 1);
   assert.equal(outbox.size, 0);
   assert.equal(cache.pending, null);

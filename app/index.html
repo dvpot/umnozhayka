@@ -90,7 +90,6 @@
           <h1 id="finish-title" tabindex="-1">Отличная работа!</h1>
           <p id="finish-description"></p>
           <p id="finish-score" class="check-score hidden"></p>
-          <p id="finish-sync" class="sync-status" role="status"></p>
           <button id="again-button" class="primary" type="button">Повторить заново ↻</button>
           <button id="next-table-button" class="secondary" type="button">Следующая таблица →</button>
           <button id="finish-back-button" class="link" type="button">← К последнему примеру</button>
@@ -99,19 +98,23 @@
       </div>
       <section id="mastery-view" class="activity mastery hidden" aria-labelledby="mastery-title">
         <h1 id="mastery-title" tabindex="-1">Мой прогресс</h1>
-        <p id="mastery-scope" class="mastery-scope"></p>
         <p id="mastery-status" class="sync-status" role="status"></p>
         <div id="mastery-content">
-          <p>Итоги завершённых занятий. В заданиях с ответом считаются решения с первого раза.</p>
           <dl class="mastery-scores mastery-totals">
             <div><dt>Тренировка · просмотрено</dt><dd id="total-study"></dd></div>
             <div><dt>Выбери ответ</dt><dd id="total-quiz"></dd></div>
             <div><dt>Проверка</dt><dd id="total-check"></dd></div>
-            <div><dt>Всего решено с первого раза</dt><dd id="total-solved"></dd></div>
+            <div><dt>Всего решено</dt><dd id="total-solved"></dd></div>
           </dl>
-          <p id="mastery-count" class="mastery-count"></p>
-          <dl id="mastery-scores" class="mastery-scores" aria-label="Лучшие результаты проверок по таблицам"></dl>
-          <button id="mastery-import" class="hidden" type="button">Перенести результаты с этого устройства</button>
+          <div class="mastery-heading">
+            <h2>Последний проход</h2>
+            <select id="mastery-mode" aria-label="Режим последнего прохода">
+              <option value="check">Проверка</option>
+              <option value="quiz">Выбери ответ</option>
+            </select>
+          </div>
+          <p class="mastery-note">Верно с первой попытки</p>
+          <dl id="mastery-scores" class="mastery-scores" aria-label="Последние результаты по таблицам"></dl>
         </div>
       </section>
     </main>

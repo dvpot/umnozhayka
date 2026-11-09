@@ -214,20 +214,3 @@ export function unpackCheck(raw) {
   const tracksTableProgress = data.v === 5 && data.tracksTableProgress === true;
   return { ...session, answers, mistakes, tracksTableProgress };
 }
-
-export function roundProgress(activity, session, seen) {
-  const totals = [0, 0, 0, 0, 0, 0];
-  const size = session.list.length;
-  if (session.index !== size) return totals;
-  if (activity === 'study') {
-    totals[0] = seen.size;
-    totals[1] = size;
-  } else if (activity === 'quiz') {
-    totals[2] = session.quizResults.filter(result => result.solved && result.mistakes === 0).length;
-    totals[3] = size;
-  } else if (session.tracksTableProgress) {
-    totals[4] = session.answers.filter((answer, i) => answer === session.list[i].answer && session.mistakes[i] === 0).length;
-    totals[5] = size;
-  }
-  return totals;
-}
