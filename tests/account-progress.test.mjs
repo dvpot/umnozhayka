@@ -13,7 +13,7 @@ test('API rejects unauthenticated and malformed requests before accessing SQLite
   await assert.rejects(handleTableProgress(null, { action: 'other' }, ctx(101)), /действие/);
 });
 
-test('SQLite combines results atomically by signed account and deletes only that account', { skip: !sqlite }, async () => {
+test('SQLite combines results atomically by signed account and rejects requests to delete statistics', { skip: !sqlite }, async () => {
   const sql = new sqlite.DatabaseSync(':memory:');
   try {
     const fields = scores().map((_, i) => `x${i + 1} INTEGER`).join(', ');
@@ -29,10 +29,10 @@ test('SQLite combines results atomically by signed account and deletes only that
     assert.deepEqual(await call(101, { action: 'read' }), { scores: scores(7, 0, 10) });
     assert.deepEqual(await call(202, { action: 'read' }), { scores: scores() });
     await call(202, { action: 'merge', scores: scores(9) });
-    assert.deepEqual(await call(101, { action: 'clear', userId: 202 }), { scores: scores() });
-    assert.deepEqual(await call(101, { action: 'read' }), { scores: scores() });
+    await assert.rejects(call(101, { action: 'clear', userId: 202 }), /действие/);
+    assert.deepEqual(await call(101, { action: 'read' }), { scores: scores(7, 0, 10) });
     assert.deepEqual(await call(202, { action: 'read' }), { scores: scores(9) });
-    assert.equal(sql.prepare('SELECT count(*) AS count FROM table_progress').get().count, 1);
+    assert.equal(sql.prepare('SELECT count(*) AS count FROM table_progress').get().count, 2);
   } finally {
     sql.close();
   }
