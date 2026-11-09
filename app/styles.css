@@ -32,15 +32,16 @@ button{border:1px solid #e1e4f5;border-bottom:4px solid #dae0f4;background:white
 .bottom-nav button[aria-current="page"]{background:#ece9ff;color:#4332a5}
 .mastery{margin-top:10px;padding:16px;background:#f6f5ff;border-radius:18px;color:#4f5188;font-size:14px}
 .mastery h1{margin:0;color:#5142ae;font-size:24px}
-.mastery-scope{font-weight:800}
 .sync-status:empty{display:none}
 .mastery p{margin:10px 0;line-height:1.4}
 .mastery p:empty{display:none}
-.mastery-count{font-weight:850}
+.mastery-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px}
+.mastery-heading h2{margin:0;font-size:16px}
+.mastery-heading select{min-width:0;font-size:13px}
+.mastery .mastery-note{font-size:12px;margin:5px 0}
 .mastery-scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:10px 0}
 .mastery-scores div{display:flex;justify-content:space-between;gap:4px;padding:7px 8px;background:#fff;border-radius:10px;font-variant-numeric:tabular-nums}
 .mastery-scores dd{margin:0;font-weight:850}
-.mastery #mastery-import{width:100%;min-height:40px;margin-top:6px;font-size:13px}
 .mastery-totals{grid-template-columns:1fr}
 .game-sync{margin:8px 0 0;font-size:13px;color:#5142ae}
 @media(max-width:370px){.header{gap:5px;padding-inline:8px}.select-holder{gap:5px}.select-caption{font-size:13px}.select-holder select{padding-left:9px;padding-right:26px;font-size:14px}.activity-holder select{font-size:11px;max-width:none}.shuffle-button{width:37px;flex-basis:37px;height:40px;padding:6px}.settings-button{width:30px;flex-basis:30px;height:40px}.card{padding-inline:38px}.card-arrow{width:30px}.card-arrow svg{width:21px}.answer-options{gap:5px}.answer-option{min-height:55px}.check-keypad{gap:5px}.check-keypad button{min-height:40px}.voice-choice{gap:6px;padding-inline:8px}.voice-choice select{padding-inline:8px 24px;font-size:12px;background-position:right 5px center}}

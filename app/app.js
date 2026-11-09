@@ -1,9 +1,9 @@
 import {
   MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newSession, nextTable,
-  packCheck, packSession, quizTotals, recordTableProgress, roundProgress, submitCheckAnswer, unpackCheck, unpackSession,
-  unpackTableProgress
+  packCheck, packSession, quizTotals, submitCheckAnswer, unpackCheck, unpackSession
 } from './engine.js';
-import { addTotals, createAccountSync, emptyTotals, newPlayId, validTotals } from './account-sync.js';
+import { createAccountSync, emptyTotals, newPlayId, validTotals } from './account-sync.js';
+import { countMarks, exerciseProgress, latestScores, validMarks } from './live-progress.js';
 import { spokenVoiceName } from './voice-name.js';
 
 const byId = id => document.getElementById(id);
@@ -18,12 +18,12 @@ const ui = {
   left: byId('left-number'), right: byId('right-number'), answer: byId('answer'), quizStatus: byId('quiz-status'),
   bar: byId('timer-bar'), fill: byId('timer-fill'), back: byId('back-button'), next: byId('next-button'),
   finishText: byId('finish-description'), nextTable: byId('next-table-button'), finishTitle: byId('finish-title'),
-  finishScore: byId('finish-score'), finishSync: byId('finish-sync'), finishBack: byId('finish-back-button'), card: byId('example-card'),
+  finishScore: byId('finish-score'), finishBack: byId('finish-back-button'), card: byId('example-card'),
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
   home: byId('home-view'), lessonHeader: byId('lesson-header'), navHome: byId('nav-home'),
-  navMastery: byId('nav-mastery'), mastery: byId('mastery-view'), masteryScope: byId('mastery-scope'),
-  masteryImport: byId('mastery-import'), masteryTitle: byId('mastery-title'),
-  masteryCount: byId('mastery-count'), masteryScores: byId('mastery-scores'), masteryContent: byId('mastery-content'),
+  navMastery: byId('nav-mastery'), mastery: byId('mastery-view'),
+  masteryMode: byId('mastery-mode'), masteryTitle: byId('mastery-title'),
+  masteryScores: byId('mastery-scores'), masteryContent: byId('mastery-content'),
   masteryStatus: byId('mastery-status'), gameSync: byId('game-sync'),
   totals: ['study', 'quiz', 'check', 'solved'].map(id => byId('total-' + id)),
   voice: byId('voice-toggle'), voiceSelect: byId('voice-select'),
@@ -37,18 +37,12 @@ const localAccountId = telegram?.initDataUnsafe?.user?.id;
 const activeScope = !accountMode ? '' : Number.isSafeInteger(localAccountId) && localAccountId > 0
   ? `.telegram.${localAccountId}` : null;
 let homeOpen = true;
-let accountScores = null;
-let progressRequest = 0;
 let progressLoading = false;
 let syncNotice = '';
-let accountQueue = Promise.resolve();
-let accountJobs = 0;
 const storageKey = 'umnozhayka.session.v1';
 const checkKey = 'umnozhayka.check.v1';
 const activityKey = 'umnozhayka.activity.v1';
-const masteryKey = 'umnozhayka.table-progress.v1';
 const gameKey = 'umnozhayka.game.v1';
-const pendingScoresKey = 'umnozhayka.pending-best.v1';
 const voiceKey = 'umnozhayka.voice.v1';
 const voiceChoiceKey = 'umnozhayka.voice-choice.v1';
 function load(key) {
@@ -67,32 +61,44 @@ function storeActive(key, value) {
 function parseStored(raw) {
   try { return JSON.parse(raw); } catch { return null; }
 }
+const livePrefix = activeScope === null ? null : 'umnozhayka.live-round.v1' + activeScope + '.';
 const roundPrefix = activeScope === null ? null : 'umnozhayka.round.v1' + activeScope + '.';
 function loadRounds() {
   if (!roundPrefix) return [];
   const rounds = [];
   try {
     for (const key of Object.keys(window.localStorage)) {
-      if (!key.startsWith(roundPrefix)) continue;
-      const roundId = key.slice(roundPrefix.length);
-      const totals = parseStored(load(key));
-      if (/^[a-f0-9]{32}$/.test(roundId) && validTotals(totals)) rounds.push({ roundId, totals });
+      if (key.startsWith(livePrefix)) {
+        const record = parseStored(load(key));
+        if (record?.key === key.slice(livePrefix.length) && validMarks(record) &&
+            typeof record.roundId === 'string' && /^[a-f0-9]{32}$/.test(record.roundId)) rounds.push(record);
+      } else if (key.startsWith(roundPrefix)) {
+        const roundId = key.slice(roundPrefix.length);
+        const totals = parseStored(load(key));
+        if (/^[a-f0-9]{32}$/.test(roundId) && validTotals(totals)) rounds.push({ roundId, totals });
+      }
     }
   } catch { /* Память может быть отключена. */ }
   return rounds;
 }
 function persistRound(round) {
   if (!roundPrefix) return;
-  try { window.localStorage.setItem(roundPrefix + round.roundId, JSON.stringify(round.totals)); } catch { /* Память может быть отключена. */ }
+  try {
+    window.localStorage.setItem(livePrefix + round.key, JSON.stringify(round));
+  } catch { /* Память может быть отключена. */ }
 }
 function removeRound(roundId) {
   if (!roundPrefix) return;
-  try { window.localStorage.removeItem(roundPrefix + roundId); } catch { /* Повтор отправки безопасен. */ }
+  try {
+    window.localStorage.removeItem(livePrefix + roundId);
+    window.localStorage.removeItem(roundPrefix + roundId);
+  } catch { /* Повтор отправки безопасен. */ }
 }
 const gameCache = parseStored(loadActive(gameKey));
 let gameSavedLocally = Boolean(gameCache?.state);
 let totals = validTotals(gameCache?.totals) ? gameCache.totals : (accountMode ? null : emptyTotals());
-let pendingScores = unpackTableProgress(loadActive(pendingScoresKey));
+let latest = gameCache?.latest ?? { quiz: Array(10).fill(null), check: Array(10).fill(null) };
+let marks = null;
 let checking = loadActive(activityKey) === 'check';
 const legacySession = checking ? unpackCheck(loadActive(checkKey)) : unpackSession(loadActive(storageKey));
 let session = legacySession || newSession();
@@ -123,6 +129,7 @@ function snapshot() {
   return {
     v: 1, activity: checking ? 'check' : session.mode, roundId,
     game: JSON.parse(checking ? packCheck(session) : packSession(session)),
+    progress: marks,
     draft: checking && draftEdited ? draft : null,
     seen: [...seen], revealed, counted, voiceEnabled, voiceURI: selectedVoiceURI
   };
@@ -138,6 +145,7 @@ function restore(state) {
   session = restored;
   checking = isCheck;
   roundId = state.roundId;
+  marks = validMarks(state.progress) ? state.progress : null;
   draft = state.draft ?? '';
   draftEdited = state.draft !== null;
   seen = new Set(state.seen);
@@ -164,8 +172,9 @@ function callServerless(endpoint, input) {
 }
 const gameSync = accountMode ? createAccountSync({
   call: async input => {
-    const result = await callServerless('accountPlay', input);
-    if (!result || (input.action !== 'record' && !Number.isSafeInteger(result.revision)) ||
+    const action = input.action === 'read' ? 'progress' : input.action;
+    const result = await callServerless('accountPlay', { ...input, action });
+    if (!result || (['read', 'save'].includes(input.action) && !Number.isSafeInteger(result.revision)) ||
         (input.action !== 'save' && !validTotals(result.totals))) {
       throw new Error('Некорректный ответ сервера.');
     }
@@ -180,9 +189,13 @@ const gameSync = accountMode ? createAccountSync({
     if (conflict) syncNotice = 'Открыта более новая игра с другого устройства.';
     spokenTask = undefined;
     updateVoices();
-    if (document.body.classList.contains('app-ready')) render(true);
+    if (ui.shell.getAttribute('aria-hidden') === 'false') render(true);
   },
-  onTotals: updated => { totals = updated; }
+  onTotals: (updated, results) => {
+    totals = updated;
+    latest = results ?? latest;
+    if (!homeOpen) renderTableProgress();
+  }
 }) : null;
 restore(gameCache?.state);
 
@@ -199,110 +212,39 @@ async function syncGame(refresh = false) {
     return false;
   }
 }
-function save(delta = emptyTotals()) {
+function save(finishing = false) {
+  const activity = checking ? 'check' : session.mode;
+  const previous = marks;
+  const scores = finishing && !counted ? latestScores(activity, session) : null;
+  const next = !counted ? exerciseProgress(activity, session, seen, previous) : previous;
+  const changed = next?.played.some(Boolean) && (scores || !previous ||
+    next.played.some((value, i) => value !== previous.played[i] || next.solved[i] !== previous.solved[i]));
+  marks = next;
+  if (finishing) counted = true;
   const state = snapshot();
   if (gameSync) {
     syncNotice = '';
-    gameSync.stage(state, delta);
+    gameSync.stage(state, changed ? { ...next, scores, completedAt: scores ? Date.now() : null } : null);
     void syncGame();
   } else {
-    totals = addTotals(totals, delta);
-    storeActive(gameKey, { state, totals });
-  }
-}
-function localTableProgress() {
-  return unpackTableProgress(load(masteryKey));
-}
-function hasScores(scores) {
-  return scores?.some(score => score !== null) ?? false;
-}
-function removeLocalProgress() {
-  try {
-    window.localStorage.removeItem(masteryKey);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function callTableProgress(input) {
-  const { scores } = await callServerless('tableProgress', input);
-  if (!Array.isArray(scores) || scores.length !== MAX_FACTOR ||
-      !scores.every(score => score === null || (Number.isInteger(score) && score >= 0 && score <= MAX_FACTOR))) {
-    throw new Error('Некорректный ответ сервера.');
-  }
-  return scores;
-}
-function queueAccountProgress(action, scores, onSuccess, onFailure) {
-  accountJobs++;
-  renderTableProgress();
-  accountQueue = accountQueue.then(async () => {
-    try {
-      accountScores = await callTableProgress(scores ? { action, scores } : { action });
-      const message = onSuccess?.();
-      if (!progressLoading) ui.masteryStatus.textContent = message ?? '';
-      return true;
-    } catch {
-      if (!progressLoading) ui.masteryStatus.textContent = 'Не удалось связаться с хранилищем Telegram. Попробуй ещё раз.';
-      onFailure?.();
-      return false;
-    } finally {
-      accountJobs--;
-      renderTableProgress();
+    if (changed) {
+      const offset = next.mode;
+      totals[offset] += countMarks(next.solved) - countMarks(previous?.solved ?? []);
+      totals[offset + 1] += countMarks(next.played) - countMarks(previous?.played ?? []);
+      if (scores) scores.forEach((score, i) => { if (score !== null) latest[activity][i] = score; });
     }
-  });
-  return accountQueue;
-}
-function syncCompletedCheck() {
-  const snapshot = pendingScores;
-  if (!hasScores(snapshot)) return Promise.resolve(true);
-  const finished = session;
-  const setFinishStatus = message => {
-    if (session === finished && checking && session.index === session.list.length) ui.finishSync.textContent = message;
-  };
-  setFinishStatus('Сохраняем прогресс в аккаунте…');
-  return queueAccountProgress('merge', snapshot, () => {
-    if (pendingScores === snapshot) {
-      pendingScores = unpackTableProgress(null);
-      storeActive(pendingScoresKey, pendingScores);
-    }
-    setFinishStatus('Прогресс сохранён в аккаунте.');
-    return 'Прогресс сохранён в аккаунте.';
-  }, () => {
-    setFinishStatus('Прогресс пока не сохранён. Открой «Мой прогресс», чтобы повторить сохранение.');
-  });
-}
-function saveTableProgress() {
-  if (!session.tracksTableProgress) return;
-  if (accountMode) {
-    const best = pendingScores ?? unpackTableProgress(null);
-    pendingScores = recordTableProgress(best, session);
-    storeActive(pendingScoresKey, pendingScores);
-    syncCompletedCheck();
-    return;
-  }
-  try {
-    const best = localTableProgress();
-    const updated = recordTableProgress(best, session);
-    if (updated !== best) window.localStorage.setItem(masteryKey, JSON.stringify(updated));
-    ui.masteryStatus.textContent = '';
-  } catch {
-    ui.masteryStatus.textContent = 'Не удалось сохранить прогресс на этом устройстве.';
+    storeActive(gameKey, { state, totals, latest });
   }
 }
 function renderTableProgress() {
-  const local = localTableProgress();
-  const best = accountMode ? (accountScores ?? unpackTableProgress(null)) : local;
-  const mastered = best.filter(score => score === MAX_FACTOR).length;
-  const busy = accountJobs > 0;
-  ui.masteryScope.textContent = accountMode ? 'Прогресс аккаунта Telegram' : 'Прогресс на этом устройстве';
-  ui.masteryContent.classList.toggle('hidden', progressLoading || (accountMode && !accountScores));
-  ui.masteryContent.setAttribute('aria-busy', String(progressLoading));
-  ui.masteryCount.textContent = `Лучшие результаты проверок · без ошибок: ${mastered} из ${MAX_FACTOR} таблиц`;
+  const results = latest[ui.masteryMode.value];
+  ui.masteryContent.classList.toggle('hidden', totals === null);
+  ui.masteryContent.setAttribute('aria-busy', String(progressLoading && totals === null));
   const [studySeen, studyTotal, quizCorrect, quizTotal, checkCorrect, checkTotal] = totals ?? emptyTotals();
   const ratios = [[studySeen, studyTotal], [quizCorrect, quizTotal], [checkCorrect, checkTotal],
     [quizCorrect + checkCorrect, quizTotal + checkTotal]];
   ui.totals.forEach((element, i) => { element.textContent = totals ? ratios[i].join(' / ') : '—'; });
-  const rows = best.map((score, i) => {
+  const rows = results.map((score, i) => {
     const row = document.createElement('div');
     const label = document.createElement('dt');
     const value = document.createElement('dd');
@@ -312,20 +254,15 @@ function renderTableProgress() {
     return row;
   });
   ui.masteryScores.replaceChildren(...rows);
-  ui.masteryImport.classList.toggle('hidden', !accountMode || !hasScores(local));
-  ui.masteryImport.disabled = busy || progressLoading;
 }
 async function refreshProgress() {
-  const request = ++progressRequest;
+  if (progressLoading) return;
   progressLoading = true;
-  ui.masteryStatus.textContent = 'Обновляем прогресс…';
+  ui.masteryStatus.textContent = totals === null ? 'Загружаем прогресс…' : '';
   renderTableProgress();
-  await syncCompletedCheck();
-  const [gameOK, bestOK] = await Promise.all([syncGame(true), queueAccountProgress('read')]);
-  if (request !== progressRequest) return;
+  const gameOK = await syncGame(true);
   progressLoading = false;
-  ui.masteryStatus.textContent = gameOK && bestOK && !hasScores(pendingScores)
-    ? '' : 'Не всё удалось обновить. Открой раздел ещё раз, чтобы повторить.';
+  ui.masteryStatus.textContent = gameOK ? '' : 'Не удалось обновить данные. Открой раздел ещё раз.';
   renderTableProgress();
 }
 function stopTimer() {
@@ -490,14 +427,9 @@ function render(restoring = false) {
     if (checking || session.mode === 'quiz') ui.finishScore.textContent = scoreText();
     ui.finishBack.classList.toggle('hidden', checking);
     ui.nextTable.classList.toggle('hidden', nextTable(session.table) === null);
-    if (!restoring) {
-      const delta = counted ? emptyTotals() : roundProgress(checking ? 'check' : session.mode, session, seen);
-      counted = true;
-      save(delta);
-    }
+    if (!restoring) save(true);
     return;
   }
-  ui.finishSync.textContent = '';
   ui.lesson.classList.remove('hidden');
   ui.finish.classList.add('hidden');
   const task = session.list[session.index];
@@ -547,6 +479,7 @@ function start(table, random, activity = session.mode) {
   draft = '';
   draftEdited = false;
   seen = new Set();
+  marks = null;
   counted = false;
   roundId = newPlayId();
   spokenTask = '';
@@ -555,10 +488,6 @@ function start(table, random, activity = session.mode) {
 function forward() {
   if (checking) {
     if (!advanceCheck(session)) return;
-    if (session.index === session.list.length) {
-      ui.finishSync.textContent = '';
-      saveTableProgress();
-    }
     draft = '';
     draftEdited = false;
     render();
@@ -630,13 +559,7 @@ function closeSettings() {
 }
 ui.settingsClose.addEventListener('click', closeSettings);
 ui.settingsDialog.addEventListener('click', e => { if (e.target === ui.settingsDialog) closeSettings(); });
-ui.masteryImport.addEventListener('click', () => {
-  const local = localTableProgress();
-  if (!hasScores(local)) return;
-  queueAccountProgress('merge', local, () => removeLocalProgress()
-    ? 'Результаты перенесены в аккаунт.'
-    : 'Результаты перенесены, но локальную копию удалить не удалось.');
-});
+ui.masteryMode.addEventListener('change', renderTableProgress);
 ui.voice.addEventListener('change', () => {
   voiceEnabled = ui.voice.checked;
   skipTaskSpeech = true;
@@ -735,8 +658,14 @@ window.addEventListener('online', () => {
   if (accountMode && !homeOpen) void refreshProgress();
   else if (accountMode) void syncGame(true);
 });
-await syncGame(true);
+if (accountMode) {
+  let deadline;
+  await Promise.race([syncGame(true), new Promise(resolve => { deadline = setTimeout(resolve, 3500); })]);
+  clearTimeout(deadline);
+}
 render(true);
+const initialProgress = exerciseProgress(checking ? 'check' : session.mode, session, seen);
+if (!marks && !counted && initialProgress.played.some(Boolean)) save();
 ui.shell.setAttribute('aria-hidden', 'false');
 ui.loading.setAttribute('aria-hidden', 'true');
 requestAnimationFrame(() => document.body.classList.add('app-ready'));

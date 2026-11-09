@@ -1,3 +1,5 @@
+import { readLiveProgress, recordLiveProgress, sanitizeMarks } from './live-progress.js';
+
 const fields = 'revision, write_id, state';
 const opaqueId = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
 const integer = (n, max) => Number.isSafeInteger(n) && n >= 0 && n <= max;
@@ -32,7 +34,10 @@ function sanitizeState(state) {
         !mistakes.every(n => integer(n, Number.MAX_SAFE_INTEGER)) || typeof tracksTableProgress !== 'boolean') return null;
     game = { v: 5, session, answers, mistakes, tracksTableProgress };
   }
-  return { v: 1, activity, roundId, game, draft, seen, revealed, counted, voiceEnabled, voiceURI };
+  const progress = sanitizeMarks(state.progress);
+  if (state.progress != null && (!progress || progress.mode !== ['study', 'quiz', 'check'].indexOf(activity) * 2)) return null;
+  return { v: 1, activity, roundId, game, draft, seen, revealed, counted, voiceEnabled, voiceURI,
+    ...(progress ? { progress } : {}) };
 }
 
 async function readTotals(db, prefix) {
@@ -54,6 +59,7 @@ export async function handleAccountPlay(db, input, ctx, RequestError = Error) {
   if (!Number.isSafeInteger(id) || id <= 0) throw new RequestError('Нужен аккаунт Telegram.');
   const params = { ':id': id };
   const prefix = id + ':';
+  if (input?.action === 'recordLive') return recordLiveProgress(db, prefix, input, RequestError);
   if (input?.action === 'record') {
     const { roundId, totals } = input;
     const modes = Array.isArray(totals) ? [0, 2, 4].filter(i => totals[i + 1] > 0) : [];
@@ -87,13 +93,14 @@ export async function handleAccountPlay(db, input, ctx, RequestError = Error) {
        WHERE account_play.revision = :revision AND account_play.write_id <> :write
        RETURNING ${fields}`, values);
     [row] = result.rows;
-  } else if (input?.action !== 'read') {
+  } else if (!['read', 'progress'].includes(input?.action)) {
     throw new RequestError('Неизвестное действие.');
   }
   row ??= await db.get(`SELECT ${fields} FROM account_play WHERE account_id = :id`, params);
   return {
     revision: row?.revision ?? 0, writeId: row?.write_id ?? null,
     state: row ? JSON.parse(row.state) : null,
+    ...(input.action === 'progress' ? await readLiveProgress(db, prefix) : {}),
     ...(input.action === 'read' ? { totals: await readTotals(db, prefix) } : {})
   };
 }
