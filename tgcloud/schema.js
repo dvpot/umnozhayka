@@ -45,3 +45,8 @@ export const accountRoundResult = table('account_round_result', {
   completedAt: integer('completed_at').notNull(),
   scores: text('scores').notNull()
 });
+
+export const accountRoundError = table('account_round_error', {
+  errorKey: text('error_key').primaryKey(),
+  errors: integer('errors').notNull()
+});

@@ -93,14 +93,15 @@ export async function handleAccountPlay(db, input, ctx, RequestError = Error) {
        WHERE account_play.revision = :revision AND account_play.write_id <> :write
        RETURNING ${fields}`, values);
     [row] = result.rows;
-  } else if (!['read', 'progress'].includes(input?.action)) {
+  } else if (!['read', 'progress', 'progressAttempts'].includes(input?.action)) {
     throw new RequestError('Неизвестное действие.');
   }
   row ??= await db.get(`SELECT ${fields} FROM account_play WHERE account_id = :id`, params);
   return {
     revision: row?.revision ?? 0, writeId: row?.write_id ?? null,
     state: row ? JSON.parse(row.state) : null,
-    ...(input.action === 'progress' ? await readLiveProgress(db, prefix) : {}),
+    ...(['progress', 'progressAttempts'].includes(input.action)
+      ? await readLiveProgress(db, prefix, input.action === 'progressAttempts') : {}),
     ...(input.action === 'read' ? { totals: await readTotals(db, prefix) } : {})
   };
 }

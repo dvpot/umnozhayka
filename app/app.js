@@ -22,7 +22,7 @@ const ui = {
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
   home: byId('home-view'), lessonHeader: byId('lesson-header'), navHome: byId('nav-home'),
   navMastery: byId('nav-mastery'), mastery: byId('mastery-view'),
-  masteryMode: byId('mastery-mode'), masteryTitle: byId('mastery-title'),
+  masteryModes: byId('mastery-modes'), masteryTitle: byId('mastery-title'),
   masteryScores: byId('mastery-scores'), masteryContent: byId('mastery-content'),
   masteryStatus: byId('mastery-status'), gameSync: byId('game-sync'),
   totals: ['study', 'quiz', 'check', 'solved'].map(id => byId('total-' + id)),
@@ -71,6 +71,7 @@ function loadRounds() {
       if (key.startsWith(livePrefix)) {
         const record = parseStored(load(key));
         if (record?.key === key.slice(livePrefix.length) && validMarks(record) &&
+            (record.wrong === undefined || typeof record.wrong === 'boolean') &&
             typeof record.roundId === 'string' && /^[a-f0-9]{32}$/.test(record.roundId)) rounds.push(record);
       } else if (key.startsWith(roundPrefix)) {
         const roundId = key.slice(roundPrefix.length);
@@ -97,6 +98,12 @@ function removeRound(roundId) {
 const gameCache = parseStored(loadActive(gameKey));
 let gameSavedLocally = Boolean(gameCache?.state);
 let totals = validTotals(gameCache?.totals) ? gameCache.totals : (accountMode ? null : emptyTotals());
+const validErrors = counts => Array.isArray(counts) && counts.length === 2 &&
+  counts.every(n => Number.isSafeInteger(n) && n >= 0);
+function knownErrors(counts) {
+  return counts ? [counts[3] - counts[2], counts[5] - counts[4]] : [0, 0];
+}
+let errors = validErrors(gameCache?.errors) ? gameCache.errors : knownErrors(totals);
 let latest = gameCache?.latest ?? { quiz: Array(10).fill(null), check: Array(10).fill(null) };
 let marks = null;
 let checking = loadActive(activityKey) === 'check';
@@ -172,10 +179,11 @@ function callServerless(endpoint, input) {
 }
 const gameSync = accountMode ? createAccountSync({
   call: async input => {
-    const action = input.action === 'read' ? 'progress' : input.action;
+    const action = input.action === 'read' ? 'progressAttempts' : input.action;
     const result = await callServerless('accountPlay', { ...input, action });
     if (!result || (['read', 'save'].includes(input.action) && !Number.isSafeInteger(result.revision)) ||
-        (input.action !== 'save' && !validTotals(result.totals))) {
+        (input.action !== 'save' && !validTotals(result.totals)) ||
+        ((action === 'progressAttempts' || input.wrongIds) && !validErrors(result.errors))) {
       throw new Error('Некорректный ответ сервера.');
     }
     return result;
@@ -191,9 +199,10 @@ const gameSync = accountMode ? createAccountSync({
     updateVoices();
     if (ui.shell.getAttribute('aria-hidden') === 'false') render(true);
   },
-  onTotals: (updated, results) => {
+  onTotals: (updated, results, attempts) => {
     totals = updated;
     latest = results ?? latest;
+    if (attempts) errors = attempts;
     if (!homeOpen) renderTableProgress();
   }
 }) : null;
@@ -212,19 +221,19 @@ async function syncGame(refresh = false) {
     return false;
   }
 }
-function save(finishing = false) {
+function save({ finishing = false, wrong = false } = {}) {
   const activity = checking ? 'check' : session.mode;
   const previous = marks;
   const scores = finishing && !counted ? latestScores(activity, session) : null;
   const next = !counted ? exerciseProgress(activity, session, seen, previous) : previous;
-  const changed = next?.played.some(Boolean) && (scores || !previous ||
+  const changed = next?.played.some(Boolean) && (wrong || scores || !previous ||
     next.played.some((value, i) => value !== previous.played[i] || next.solved[i] !== previous.solved[i]));
   marks = next;
   if (finishing) counted = true;
   const state = snapshot();
   if (gameSync) {
     syncNotice = '';
-    gameSync.stage(state, changed ? { ...next, scores, completedAt: scores ? Date.now() : null } : null);
+    gameSync.stage(state, changed ? { ...next, wrong, scores, completedAt: scores ? Date.now() : null } : null);
     void syncGame();
   } else {
     if (changed) {
@@ -233,17 +242,20 @@ function save(finishing = false) {
       totals[offset + 1] += countMarks(next.played) - countMarks(previous?.played ?? []);
       if (scores) scores.forEach((score, i) => { if (score !== null) latest[activity][i] = score; });
     }
-    storeActive(gameKey, { state, totals, latest });
+    if (wrong) errors[checking ? 1 : 0]++;
+    storeActive(gameKey, { state, totals, latest, errors });
   }
 }
 function renderTableProgress() {
-  const results = latest[ui.masteryMode.value];
+  const results = latest[ui.masteryModes.querySelector('[aria-pressed="true"]').dataset.mode];
   ui.masteryContent.classList.toggle('hidden', totals === null);
   ui.masteryContent.setAttribute('aria-busy', String(progressLoading && totals === null));
-  const [studySeen, studyTotal, quizCorrect, quizTotal, checkCorrect, checkTotal] = totals ?? emptyTotals();
-  const ratios = [[studySeen, studyTotal], [quizCorrect, quizTotal], [checkCorrect, checkTotal],
-    [quizCorrect + checkCorrect, quizTotal + checkTotal]];
-  ui.totals.forEach((element, i) => { element.textContent = totals ? ratios[i].join(' / ') : '—'; });
+  const [studySeen, studyTotal, quizCorrect, , checkCorrect] = totals ?? emptyTotals();
+  const [quizErrors, checkErrors] = errors;
+  const answerCounts = (correct, wrong) => `${correct} верно · ${wrong} неверно`;
+  const labels = [`${studySeen} / ${studyTotal}`, answerCounts(quizCorrect, quizErrors),
+    answerCounts(checkCorrect, checkErrors), answerCounts(quizCorrect + checkCorrect, quizErrors + checkErrors)];
+  ui.totals.forEach((element, i) => { element.textContent = totals ? labels[i] : '—'; });
   const rows = results.map((score, i) => {
     const row = document.createElement('div');
     const label = document.createElement('dt');
@@ -380,7 +392,7 @@ function renderAnswerOptions(task) {
       const outcome = chooseQuizAnswer(session, value);
       if (outcome === 'correct') speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
       else if (outcome === 'incorrect') speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Выбери другой ответ.', 'Ничего, попробуй снова.']));
-      render();
+      render(false, outcome === 'incorrect');
     });
     ui.options.append(button);
   }
@@ -401,7 +413,7 @@ function renderCheck(task) {
   if (!draftEdited && draft === '' && submitted !== undefined) draft = String(submitted);
   renderDraft(submitted);
 }
-function render(restoring = false) {
+function render(restoring = false, wrong = false) {
   stopTimer();
   ui.resetConfirmation.classList.add('hidden');
   ui.reset.setAttribute('aria-expanded', 'false');
@@ -427,7 +439,7 @@ function render(restoring = false) {
     if (checking || session.mode === 'quiz') ui.finishScore.textContent = scoreText();
     ui.finishBack.classList.toggle('hidden', checking);
     ui.nextTable.classList.toggle('hidden', nextTable(session.table) === null);
-    if (!restoring) save(true);
+    if (!restoring) save({ finishing: true });
     return;
   }
   ui.lesson.classList.remove('hidden');
@@ -447,7 +459,7 @@ function render(restoring = false) {
   ui.next.disabled = checking ? session.index >= session.answers.length : session.mode === 'quiz' && !result.solved;
   if (checking) {
     renderCheck(task);
-    if (!restoring) save();
+    if (!restoring) save({ wrong });
     return;
   }
   const showRestoredAnswer = restoring && revealed;
@@ -463,7 +475,7 @@ function render(restoring = false) {
   if (session.mode === 'quiz') renderAnswerOptions(task);
   else if (showRestoredAnswer) showAnswer();
   else runTimer();
-  if (!restoring) save();
+  if (!restoring) save({ wrong });
 }
 function showReset(open) {
   ui.resetConfirmation.classList.toggle('hidden', !open);
@@ -559,7 +571,13 @@ function closeSettings() {
 }
 ui.settingsClose.addEventListener('click', closeSettings);
 ui.settingsDialog.addEventListener('click', e => { if (e.target === ui.settingsDialog) closeSettings(); });
-ui.masteryMode.addEventListener('change', renderTableProgress);
+ui.masteryModes.addEventListener('click', e => {
+  const button = e.target.closest('button[data-mode]');
+  if (!button) return;
+  ui.masteryModes.querySelector('[aria-pressed="true"]').setAttribute('aria-pressed', 'false');
+  button.setAttribute('aria-pressed', 'true');
+  renderTableProgress();
+});
 ui.voice.addEventListener('change', () => {
   voiceEnabled = ui.voice.checked;
   skipTaskSpeech = true;
@@ -595,11 +613,12 @@ function randomPhrase(phrases) {
 function submit() {
   if (!checking || !submitCheckAnswer(session, draft)) return;
   const task = session.list[session.index];
-  if (Number(draft) === task.answer) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
+  const wrong = Number(draft) !== task.answer;
+  if (!wrong) speak(randomPhrase(['Верно!', 'Отлично!', 'Супер!', 'Здорово!', 'Молодец!']));
   else speak(randomPhrase(['Попробуй ещё раз.', 'Упс! Можно исправить.', 'Ничего, попробуй снова.']));
   draftEdited = false;
-  render();
-  if (session.answers[session.index] === task.answer) ui.next.focus();
+  render(false, wrong);
+  if (!wrong) ui.next.focus();
 }
 document.addEventListener('keydown', e => {
   if (e.altKey || e.ctrlKey || e.metaKey || e.repeat) return;

@@ -51,6 +51,8 @@ test('client retries a completed round after a lost acknowledgement and preserve
   let remote = { revision, writeId: null, state: null };
   const rounds = new Map();
   const outbox = new Map();
+  const submittedErrors = new Set();
+  const sentErrorIds = [];
   let failAfterCommit = true;
   const buildClient = () => createAccountSync({
     cache, persist: next => { cache = structuredClone(next); },
@@ -60,6 +62,8 @@ test('client retries a completed round after a lost acknowledgement and preserve
     onRemote() {}, onTotals() {},
     async call(input) {
       if (input.action === 'recordLive') {
+        sentErrorIds.push(input.wrongIds);
+        input.wrongIds.forEach(id => submittedErrors.add(id));
         const prior = rounds.get(input.roundId);
         rounds.set(input.roundId, [0, 0, (prior?.[2] ?? 0) | input.solved[0], (prior?.[3] ?? 0) | input.played[0], 0, 0]);
       }
@@ -79,9 +83,9 @@ test('client retries a completed round after a lost acknowledgement and preserve
   let client = buildClient();
   await client.sync(true);
   const otherWindow = buildClient();
-  client.stage({ index: 10, roundId: 'round-a' }, { mode: 2, played: [8, 0], solved: [0, 0], scores: null });
+  client.stage({ index: 10, roundId: 'round-a' }, { mode: 2, played: [8, 0], solved: [0, 0], scores: null, wrong: true });
   await assert.rejects(client.sync(), /Response lost/);
-  client.stage({ index: 10, roundId: 'round-a' }, { mode: 2, played: [2, 0], solved: [2, 0], scores: null });
+  client.stage({ index: 10, roundId: 'round-a' }, { mode: 2, played: [2, 0], solved: [2, 0], scores: null, wrong: false });
   otherWindow.stage({ index: 1, roundId: 'round-b' });
   assert.equal(outbox.size, 2);
   remote = { revision: ++revision, writeId: 'write-b', state: { index: 5, roundId: 'round-b' } };
@@ -90,6 +94,8 @@ test('client retries a completed round after a lost acknowledgement and preserve
   assert.deepEqual(cache.state, remote.state);
   assert.deepEqual(cache.totals, [0, 0, 2, 10, 0, 0]);
   assert.equal(rounds.size, 1);
+  assert.equal(submittedErrors.size, 1);
+  assert.deepEqual(sentErrorIds[0], sentErrorIds[1]);
   assert.equal(outbox.size, 0);
   assert.equal(cache.pending, null);
   assert.equal(cache.staged, null);
