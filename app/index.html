@@ -35,6 +35,7 @@
           <option value="study">Тренировка</option>
           <option value="quiz">Выбери ответ</option>
           <option value="check">Проверка</option>
+          <option value="review" hidden>Повтор ошибок</option>
         </select>
       </label>
       <button id="random-mode" class="shuffle-button" type="button" aria-label="Включить случайный порядок" aria-pressed="false" title="Перемешать примеры">
@@ -90,6 +91,7 @@
           <h1 id="finish-title" tabindex="-1">Отличная работа!</h1>
           <p id="finish-description"></p>
           <p id="finish-score" class="check-score hidden"></p>
+          <button id="repeat-missed-button" class="secondary hidden" type="button">Повторить ошибки</button>
           <button id="again-button" class="primary" type="button">Повторить заново ↻</button>
           <button id="next-table-button" class="secondary" type="button">Следующая таблица →</button>
           <button id="finish-back-button" class="link" type="button">← К последнему примеру</button>

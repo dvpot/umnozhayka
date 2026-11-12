@@ -15,6 +15,7 @@ function mark(bits, index) {
 }
 
 export function exerciseProgress(activity, session, seen, previous) {
+  if (!Object.hasOwn(modes, activity)) return null;
   const played = previous?.played.map(BigInt) ?? [0n, 0n];
   const solved = previous?.solved.map(BigInt) ?? [0n, 0n];
   session.list.forEach((task, i) => {
@@ -42,7 +43,7 @@ export function countMarks(masks) {
 }
 
 export function latestScores(activity, session) {
-  if (activity === 'study' || session.index !== session.list.length ||
+  if (!Object.hasOwn(modes, activity) || activity === 'study' || session.index !== session.list.length ||
       (activity === 'check' && !session.tracksTableProgress)) return null;
   if (activity === 'check') return recordTableProgress(unpackTableProgress(null), session);
   const scores = Array(10).fill(null);

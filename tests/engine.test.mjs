@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_FACTOR, makeExercises, makeAnswerOptions, newSession, packSession, unpackSession, nextTable, chooseQuizAnswer, quizTotals, newCheck, submitCheckAnswer, advanceCheck, checkTotals, packCheck, unpackCheck } from '../app/engine.js';
+import { MAX_FACTOR, makeExercises, makeAnswerOptions, newSession, newReviewSession, packSession, unpackSession, nextTable, chooseQuizAnswer, quizTotals, newCheck, submitCheckAnswer, advanceCheck, checkTotals, packCheck, unpackCheck } from '../app/engine.js';
 
 test('Все: 100 уникальных примеров от 1×1 до 10×10', () => {
   const list = makeExercises();
@@ -135,6 +135,27 @@ test('Варианты остаются на своих местах после 
   assert.equal(chooseQuizAnswer(s, wrong), 'incorrect');
   assert.deepEqual(s.quizResults[0].options, options);
   assert.deepEqual(unpackSession(packSession(s)).quizResults[0].options, options);
+});
+
+test('Повтор ошибок создаёт отдельный список без дублей и сохраняет его после перезагрузки', () => {
+  const tasks = makeExercises(3);
+  const review = newReviewSession([tasks[1].id, tasks[4].id], 3, false, () => 0.5);
+  assert.equal(review.mode, 'quiz');
+  assert.equal(review.review, true);
+  assert.equal(review.list.length, 2);
+  assert.deepEqual(review.list.map(task => task.id), ['3x2', '3x5']);
+  assert.equal(new Set(review.list.map(task => task.id)).size, 2);
+  assert.deepEqual(unpackSession(packSession(review)), review);
+});
+
+test('Повтор принимает только известные примеры выбранной таблицы без повторов', () => {
+  assert.throws(() => newReviewSession([], 2), RangeError);
+  assert.throws(() => newReviewSession(['2x1', '2x1'], 2), RangeError);
+  assert.throws(() => newReviewSession(['3x1'], 2), RangeError);
+  assert.deepEqual(newReviewSession(['2x2', '2x4', '2x6'], 2, true, () => 0).list.map(task => task.id),
+    ['2x4', '2x6', '2x2']);
+  const normal = JSON.parse(packSession(newSession(2)));
+  assert.equal(unpackSession(JSON.stringify({ ...normal, ids: ['2x1'], quizResults: [normal.quizResults[0]] })), null);
 });
 
 test('Проверка позволяет исправить неверный ответ и продолжить с неверным результатом', () => {
