@@ -23,11 +23,11 @@ Node.js 22.13+. `npm ci && npm run check`. Тесты охватывают 100/1
 
 Последняя подтверждённая публикация — Serverless revision `18`, исходный SHA `2bfb5b78672bfbf8d56f29de916782e16d839615` (PR #35, отчёт PR #36). Владелец подтвердил работу на нескольких устройствах одного аккаунта. Приложение: <https://app8854507045.tgcloud.ai/>. История и результаты проверок — в [журнале публикаций](docs/TELEGRAM_DEPLOY.md).
 
-Перед выпуском с БД следуй [порядку выкладки](docs/CODEX_RELEASE_CURRENT_MAIN_TASK.md): сначала серверные модули и проверенная миграция, затем статика. Перед каждым push выполни `npx tgcloud fetch`, `npx tgcloud status`, `npx tgcloud diff` и проверь app ID. После push проверь фактическую revision.
+Перед выпуском следуй заданию для текущего изменения. Для повтора ошибок см. [инструкцию PR #37](docs/CODEX_RELEASE_PR37_TASK.md); миграция нужна только при изменении схемы. Перед каждым push выполняй `npx tgcloud fetch`, `npx tgcloud status`, `npx tgcloud diff`, проверяй app ID и состав файлов. После push проверь фактическую revision.
 
 Username бота CLI не показывает. Для подтверждения, что сохранённая CLI-связь относится к `@umnozhayka_tgbot`, владелец сверяет app ID с настройками Serverless именно этого бота в BotFather.
 
-Инструкции: [Telegram deployment](docs/TELEGRAM_DEPLOY.md), [оформление бота](docs/BOT_PROFILE.md), [независимая QA](docs/CODEX_CHECK_QA_TASK.md), [выпуск текущего main на Ubuntu VM](docs/CODEX_RELEASE_CURRENT_MAIN_TASK.md).
+Инструкции: [Telegram deployment](docs/TELEGRAM_DEPLOY.md), [оформление бота](docs/BOT_PROFILE.md), [независимая QA](docs/CODEX_CHECK_QA_TASK.md), [выпуск повтора ошибок](docs/CODEX_RELEASE_PR37_TASK.md).
 
 Файлы оформления: `app/assets/bot-avatar.png`, `app/assets/welcome.png` и SVG-исходники. Владелец подтвердил настройку бота и проверку Mini App в Telegram 4 ноября 2026 года. Отдельная проверка доставки `/start` с картинкой не зафиксирована.
 
