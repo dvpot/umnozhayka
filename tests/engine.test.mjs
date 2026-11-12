@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_FACTOR, makeExercises, makeAnswerOptions, newSession, newReviewSession, packSession, unpackSession, nextTable, chooseQuizAnswer, quizTotals, newCheck, submitCheckAnswer, advanceCheck, checkTotals, packCheck, unpackCheck } from '../app/engine.js';
+import { MAX_FACTOR, makeExercises, makeAnswerOptions, newSession, newReviewSession, packSession, unpackSession, nextTable, chooseQuizAnswer, missedExerciseIds, quizTotals, newCheck, submitCheckAnswer, advanceCheck, checkTotals, packCheck, unpackCheck } from '../app/engine.js';
 
 test('Все: 100 уникальных примеров от 1×1 до 10×10', () => {
   const list = makeExercises();
@@ -156,6 +156,22 @@ test('Повтор принимает только известные приме
     ['2x4', '2x6', '2x2']);
   const normal = JSON.parse(packSession(newSession(2)));
   assert.equal(unpackSession(JSON.stringify({ ...normal, ids: ['2x1'], quizResults: [normal.quizResults[0]] })), null);
+});
+
+test('Правильный ответ в повторе убирает пример из следующего списка', () => {
+  const review = newReviewSession(['2x2'], 2);
+  assert.deepEqual(missedExerciseIds('review', review), ['2x2']);
+  const [wrong] = review.quizResults[0].options.filter(value => value !== review.list[0].answer);
+  assert.equal(chooseQuizAnswer(review, wrong), 'incorrect');
+  assert.equal(chooseQuizAnswer(review, review.list[0].answer), 'correct');
+  assert.deepEqual(missedExerciseIds('review', review), []);
+  const quiz = newSession(2);
+  quiz.mode = 'quiz';
+  chooseQuizAnswer(quiz, quiz.quizResults[0].options.find(value => value !== quiz.list[0].answer));
+  assert.deepEqual(missedExerciseIds('quiz', quiz), [quiz.list[0].id]);
+  const check = newCheck(2);
+  submitCheckAnswer(check, '1');
+  assert.deepEqual(missedExerciseIds('check', check), [check.list[0].id]);
 });
 
 test('Проверка позволяет исправить неверный ответ и продолжить с неверным результатом', () => {

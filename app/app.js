@@ -1,5 +1,5 @@
 import {
-  MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newReviewSession, newSession, nextTable,
+  MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, missedExerciseIds, newCheck, newReviewSession, newSession, nextTable,
   packCheck, packSession, quizTotals, submitCheckAnswer, unpackCheck, unpackSession
 } from './engine.js';
 import { createAccountSync, emptyTotals, newPlayId, validTotals } from './account-sync.js';
@@ -377,9 +377,7 @@ function scoreText() {
   return 'Верно: ' + correct + ' · Неверно: ' + incorrect;
 }
 function missedIds() {
-  if (checking) return session.list.flatMap((task, i) => session.mistakes[i] > 0 ? [task.id] : []);
-  if (session.mode !== 'quiz') return [];
-  return session.list.flatMap((task, i) => session.quizResults[i].mistakes > 0 ? [task.id] : []);
+  return missedExerciseIds(checking ? 'check' : session.review ? 'review' : session.mode, session);
 }
 function renderAnswerOptions(task) {
   ui.options.replaceChildren();

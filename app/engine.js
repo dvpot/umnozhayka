@@ -144,6 +144,13 @@ export function chooseQuizAnswer(session, value) {
   return 'incorrect';
 }
 
+export function missedExerciseIds(activity, session) {
+  if (activity === 'review') return session.list.flatMap((task, i) => session.quizResults[i].solved ? [] : [task.id]);
+  if (activity === 'check') return session.list.flatMap((task, i) => session.mistakes[i] > 0 ? [task.id] : []);
+  if (activity === 'quiz') return session.list.flatMap((task, i) => session.quizResults[i].mistakes > 0 ? [task.id] : []);
+  return [];
+}
+
 export function quizTotals(session) {
   return session.quizResults.reduce((totals, result) => ({
     correct: totals.correct + Number(result.solved), incorrect: totals.incorrect + result.mistakes
