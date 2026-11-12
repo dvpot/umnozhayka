@@ -7,7 +7,8 @@ const exerciseId = id => typeof id === 'string' && /^(?:10|[1-9])x(?:10|[1-9])$/
 
 function sanitizeState(state) {
   const { activity, roundId, draft, seen, revealed, counted, voiceEnabled, voiceURI } = state ?? {};
-  if (state?.v !== 1 || !opaqueId(roundId) || !['study', 'quiz', 'check'].includes(activity) ||
+  const review = activity === 'review';
+  if (state?.v !== 1 || !opaqueId(roundId) || !['study', 'quiz', 'check', 'review'].includes(activity) ||
       typeof revealed !== 'boolean' || typeof counted !== 'boolean' || typeof voiceEnabled !== 'boolean' ||
       typeof voiceURI !== 'string' || voiceURI.length > 256 ||
       (draft !== null && !(activity === 'check' && typeof draft === 'string' && /^\d{0,3}$/.test(draft))) ||
@@ -15,27 +16,34 @@ function sanitizeState(state) {
   const check = activity === 'check';
   const source = check ? state.game?.session : state.game;
   const { table, random, mode, index, ids, quizResults } = source ?? {};
-  if (source?.v !== 5 || (table !== 'all' && (!integer(table, 10) || table === 0)) ||
-      typeof random !== 'boolean' || mode !== (check ? 'study' : activity) ||
-      !Array.isArray(ids) || ids.length !== (table === 'all' ? 100 : 10) || !ids.every(exerciseId) ||
+  const expectedLength = table === 'all' ? 100 : 10;
+  if (![5, 6].includes(source?.v) || (table !== 'all' && (!integer(table, 10) || table === 0)) ||
+      typeof random !== 'boolean' || mode !== (check ? 'study' : review ? 'quiz' : activity) ||
+      (source.v === 6 && (typeof source.review !== 'boolean' || source.review !== review)) ||
+      (review && source.v !== 6) || !Array.isArray(ids) ||
+      ids.length < (review ? 1 : expectedLength) || ids.length > expectedLength || !ids.every(exerciseId) ||
+      new Set(ids).size !== ids.length ||
+      (review && table !== 'all' && !ids.every(id => id.startsWith(`${table}x`))) ||
       !integer(index, ids.length) || !Array.isArray(quizResults) || quizResults.length !== ids.length ||
       !quizResults.every(result => result && integer(result.mistakes, 2) && typeof result.solved === 'boolean' &&
         Array.isArray(result.options) && result.options.length === 3 && result.options.every(n => integer(n, 100)) &&
         Array.isArray(result.eliminated) && result.eliminated.length === result.mistakes &&
         result.eliminated.every(n => integer(n, 100)))) return null;
-  const session = { v: 5, table, random, mode, index, ids,
+  if (!review && ids.length !== expectedLength) return null;
+  const session = { v: source.v, table, random, mode, index, ids, ...(source.v === 6 ? { review } : {}),
     quizResults: quizResults.map(({ mistakes, solved, options, eliminated }) => ({ mistakes, solved, options, eliminated })) };
   let game = session;
   if (check) {
     const { answers, mistakes, tracksTableProgress } = state.game;
-    if (state.game.v !== 5 || !Array.isArray(answers) || answers.length < index ||
+    if (![5, 6].includes(state.game.v) || !Array.isArray(answers) || answers.length < index ||
         answers.length > Math.min(index + 1, ids.length) || !answers.every(n => integer(n, 999)) ||
         !Array.isArray(mistakes) || mistakes.length !== answers.length ||
         !mistakes.every(n => integer(n, Number.MAX_SAFE_INTEGER)) || typeof tracksTableProgress !== 'boolean') return null;
     game = { v: 5, session, answers, mistakes, tracksTableProgress };
   }
   const progress = sanitizeMarks(state.progress);
-  if (state.progress != null && (!progress || progress.mode !== ['study', 'quiz', 'check'].indexOf(activity) * 2)) return null;
+  if ((review && state.progress != null) ||
+      (state.progress != null && (!progress || progress.mode !== ['study', 'quiz', 'check'].indexOf(activity) * 2))) return null;
   return { v: 1, activity, roundId, game, draft, seen, revealed, counted, voiceEnabled, voiceURI,
     ...(progress ? { progress } : {}) };
 }

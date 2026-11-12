@@ -1,5 +1,5 @@
 import {
-  MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, newCheck, newSession, nextTable,
+  MAX_FACTOR, advanceCheck, checkTotals, chooseQuizAnswer, missedExerciseIds, newCheck, newReviewSession, newSession, nextTable,
   packCheck, packSession, quizTotals, submitCheckAnswer, unpackCheck, unpackSession
 } from './engine.js';
 import { createAccountSync, emptyTotals, newPlayId, validTotals } from './account-sync.js';
@@ -18,7 +18,7 @@ const ui = {
   left: byId('left-number'), right: byId('right-number'), answer: byId('answer'), quizStatus: byId('quiz-status'),
   bar: byId('timer-bar'), fill: byId('timer-fill'), back: byId('back-button'), next: byId('next-button'),
   finishText: byId('finish-description'), nextTable: byId('next-table-button'), finishTitle: byId('finish-title'),
-  finishScore: byId('finish-score'), finishBack: byId('finish-back-button'), card: byId('example-card'),
+  finishScore: byId('finish-score'), finishBack: byId('finish-back-button'), repeatMissed: byId('repeat-missed-button'), card: byId('example-card'),
   settings: byId('settings-button'), settingsDialog: byId('settings-dialog'), settingsClose: byId('settings-close'),
   home: byId('home-view'), lessonHeader: byId('lesson-header'), navHome: byId('nav-home'),
   navMastery: byId('nav-mastery'), mastery: byId('mastery-view'),
@@ -134,7 +134,7 @@ try {
 
 function snapshot() {
   return {
-    v: 1, activity: checking ? 'check' : session.mode, roundId,
+    v: 1, activity: checking ? 'check' : session.review ? 'review' : session.mode, roundId,
     game: JSON.parse(checking ? packCheck(session) : packSession(session)),
     progress: marks,
     draft: checking && draftEdited ? draft : null,
@@ -146,9 +146,11 @@ function restore(state) {
       typeof state.counted !== 'boolean' || typeof state.revealed !== 'boolean' || !Array.isArray(state.seen) ||
       (state.draft !== null && (typeof state.draft !== 'string' || !/^\d{0,3}$/.test(state.draft)))) return false;
   const isCheck = state.activity === 'check';
+  if (!isCheck && state.activity !== 'review' && !['study', 'quiz'].includes(state.activity)) return false;
   const data = JSON.stringify(state.game);
   const restored = isCheck ? unpackCheck(data) : unpackSession(data);
-  if (!restored || (!isCheck && state.activity !== restored.mode)) return false;
+  if (!restored || (!isCheck && state.activity === 'review' && !restored.review) ||
+      (!isCheck && state.activity !== 'review' && (restored.review || state.activity !== restored.mode))) return false;
   session = restored;
   checking = isCheck;
   roundId = state.roundId;
@@ -222,10 +224,10 @@ async function syncGame(refresh = false) {
   }
 }
 function save({ finishing = false, wrong = false } = {}) {
-  const activity = checking ? 'check' : session.mode;
+  const activity = checking ? 'check' : session.review ? 'review' : session.mode;
   const previous = marks;
-  const scores = finishing && !counted ? latestScores(activity, session) : null;
-  const next = !counted ? exerciseProgress(activity, session, seen, previous) : previous;
+  const scores = finishing && !counted && activity !== 'review' ? latestScores(activity, session) : null;
+  const next = !counted && activity !== 'review' ? exerciseProgress(activity, session, seen, previous) : previous;
   const changed = next?.played.some(Boolean) && (wrong || scores || !previous ||
     next.played.some((value, i) => value !== previous.played[i] || next.solved[i] !== previous.solved[i]));
   marks = next;
@@ -242,7 +244,7 @@ function save({ finishing = false, wrong = false } = {}) {
       totals[offset + 1] += countMarks(next.played) - countMarks(previous?.played ?? []);
       if (scores) scores.forEach((score, i) => { if (score !== null) latest[activity][i] = score; });
     }
-    if (wrong) errors[checking ? 1 : 0]++;
+    if (wrong && activity !== 'review') errors[checking ? 1 : 0]++;
     storeActive(gameKey, { state, totals, latest, errors });
   }
 }
@@ -321,7 +323,7 @@ window.speechSynthesis?.addEventListener?.('voiceschanged', updateVoices);
 window.setTimeout(updateVoices, 500);
 
 function announceTask(task) {
-  const key = [checking ? 'check' : session.mode, task.id].join(':');
+  const key = [checking ? 'check' : session.review ? 'review' : session.mode, task.id].join(':');
   if (key === spokenTask) return;
   const firstRender = spokenTask === undefined;
   spokenTask = key;
@@ -374,6 +376,9 @@ function scoreText() {
   const { correct, incorrect } = checking ? checkTotals(session) : quizTotals(session);
   return 'Верно: ' + correct + ' · Неверно: ' + incorrect;
 }
+function missedIds() {
+  return missedExerciseIds(checking ? 'check' : session.review ? 'review' : session.mode, session);
+}
 function renderAnswerOptions(task) {
   ui.options.replaceChildren();
   const result = session.quizResults[session.index];
@@ -419,6 +424,8 @@ function render(restoring = false, wrong = false) {
   ui.reset.setAttribute('aria-expanded', 'false');
   ui.table.value = String(session.table);
   ui.activity.value = checking ? 'check' : session.mode;
+  if (session.review) ui.activity.value = 'review';
+  ui.activity.querySelector('option[value="review"]').hidden = !session.review;
   ui.random.setAttribute('aria-pressed', String(session.random));
   ui.random.setAttribute('aria-label', session.random ? 'Выключить случайный порядок' : 'Включить случайный порядок');
   ui.random.title = session.random ? 'Вразброс: включено' : 'По порядку';
@@ -433,8 +440,13 @@ function render(restoring = false, wrong = false) {
   if (session.index >= session.list.length) {
     ui.lesson.classList.add('hidden');
     ui.finish.classList.remove('hidden');
-    ui.finishTitle.textContent = checking ? 'Проверка закончена!' : 'Отличная работа!';
-    ui.finishText.textContent = checking ? 'Все примеры пройдены.' : 'Все примеры пройдены. Начать ещё раз?';
+    const remainingMisses = missedIds().length;
+    ui.finishTitle.textContent = session.review ? 'Повтор закончен!' : checking ? 'Проверка закончена!' : 'Отличная работа!';
+    ui.finishText.textContent = session.review
+      ? remainingMisses ? `Осталось примеров для повтора: ${remainingMisses}.` : 'Все ошибки исправлены в этом повторе.'
+      : checking ? 'Все примеры пройдены.' : 'Все примеры пройдены. Начать ещё раз?';
+    ui.repeatMissed.classList.toggle('hidden', remainingMisses === 0);
+    ui.repeatMissed.textContent = `Повторить ошибки · ${remainingMisses}`;
     ui.finishScore.classList.toggle('hidden', !(checking || session.mode === 'quiz'));
     if (checking || session.mode === 'quiz') ui.finishScore.textContent = scoreText();
     ui.finishBack.classList.toggle('hidden', checking);
@@ -444,6 +456,7 @@ function render(restoring = false, wrong = false) {
   }
   ui.lesson.classList.remove('hidden');
   ui.finish.classList.add('hidden');
+  ui.repeatMissed.classList.add('hidden');
   const task = session.list[session.index];
   announceTask(task);
   ui.progress.textContent = (session.index + 1) + ' из ' + session.list.length;
@@ -482,12 +495,26 @@ function showReset(open) {
   ui.reset.setAttribute('aria-expanded', String(open));
 }
 function selectActivity(value) {
+  if (value === 'review') { startReview(); return; }
   checking = value === 'check';
   start(session.table, session.random, value);
 }
 function start(table, random, activity = session.mode) {
   session = checking ? newCheck(table, random) : newSession(table, random);
   if (!checking) session.mode = activity;
+  draft = '';
+  draftEdited = false;
+  seen = new Set();
+  marks = null;
+  counted = false;
+  roundId = newPlayId();
+  spokenTask = '';
+  render();
+}
+function startReview(ids = missedIds(), random = session.random) {
+  if (!ids.length) return;
+  checking = false;
+  session = newReviewSession(ids, session.table, random);
   draft = '';
   draftEdited = false;
   seen = new Set();
@@ -517,13 +544,19 @@ function backward() {
 }
 ui.table.addEventListener('change', () => start(ui.table.value === 'all' ? 'all' : Number(ui.table.value), session.random));
 ui.activity.addEventListener('change', () => selectActivity(ui.activity.value));
-ui.random.addEventListener('click', () => start(session.table, !session.random));
+ui.random.addEventListener('click', () => session.review
+  ? startReview(session.list.map(task => task.id), !session.random)
+  : start(session.table, !session.random));
 ui.reset.addEventListener('click', () => {
   const open = ui.resetConfirmation.classList.contains('hidden');
   showReset(open);
   if (open) ui.resetCancel.focus();
 });
-ui.resetConfirm.addEventListener('click', () => { start(session.table, session.random); ui.reset.focus(); });
+ui.resetConfirm.addEventListener('click', () => {
+  if (session.review) startReview(session.list.map(task => task.id));
+  else start(session.table, session.random);
+  ui.reset.focus();
+});
 ui.resetCancel.addEventListener('click', () => { showReset(false); ui.reset.focus(); });
 ui.keypad.addEventListener('click', e => { if (e.target.dataset.digit !== undefined) editDraft(e.target.dataset.digit); });
 ui.deleteDigit.addEventListener('click', () => editDraft('Backspace'));
@@ -532,6 +565,7 @@ ui.back.addEventListener('click', backward);
 ui.next.addEventListener('click', forward);
 ui.answer.addEventListener('click', reveal);
 byId('again-button').addEventListener('click', () => start(session.table, session.random));
+ui.repeatMissed.addEventListener('click', () => startReview());
 ui.nextTable.addEventListener('click', () => { const table = nextTable(session.table); if (table !== null) start(table, session.random); });
 ui.finishBack.addEventListener('click', backward);
 function selectView(showHome) {

@@ -65,8 +65,27 @@ export function newSession(table = 'all', random = false, rng = Math.random) {
     quizResults: list.map(task => ({ mistakes: 0, solved: false, eliminated: [], options: makeAnswerOptions(task, rng) })) };
 }
 
+export function newReviewSession(ids, table = 'all', random = false, rng = Math.random) {
+  const source = new Map(makeExercises(table).map(task => [task.id, task]));
+  if (!Array.isArray(ids) || ids.length < 1 || ids.length > source.size ||
+      new Set(ids).size !== ids.length || ids.some(id => !source.has(id))) {
+    throw new RangeError('Некорректный список примеров для повтора');
+  }
+  const list = ids.map(id => source.get(id));
+  if (random) {
+    for (let i = list.length - 1; i > 0; i--) {
+      const value = rng();
+      if (!(value >= 0 && value < 1)) throw new RangeError('Случайное число должно быть в [0,1)');
+      const j = Math.floor(value * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+  }
+  return { table, random, mode: 'quiz', review: true, index: 0, list,
+    quizResults: list.map(task => ({ mistakes: 0, solved: false, eliminated: [], options: makeAnswerOptions(task, rng) })) };
+}
+
 export function packSession(s) {
-  return JSON.stringify({ v: 5, table: s.table, random: s.random, mode: s.mode, index: s.index,
+  return JSON.stringify({ v: 6, table: s.table, random: s.random, mode: s.mode, review: s.review === true, index: s.index,
     ids: s.list.map(x => x.id), quizResults: s.quizResults });
 }
 
@@ -79,22 +98,27 @@ export function unpackSession(raw) {
   try { ordered = makeExercises(data.table); } catch { return null; }
   // После обновления ×1…×9 -> ×1…×10 сохраняем режим, начинаем полный новый цикл.
   if (data.v === 1) return newSession(data.table, data.random);
-  if (![2, 3, 4, 5].includes(data.v) || !Array.isArray(data.ids) || data.ids.length !== ordered.length ||
-      data.index < 0 || data.index > ordered.length || new Set(data.ids).size !== ordered.length) return null;
+  const review = data.v === 6 && data.review === true;
+  if (![2, 3, 4, 5, 6].includes(data.v) || (data.v === 6 && typeof data.review !== 'boolean') ||
+      !Array.isArray(data.ids) || data.ids.length < (review ? 1 : ordered.length) || data.ids.length > ordered.length ||
+      data.index < 0 || data.index > data.ids.length || new Set(data.ids).size !== data.ids.length) return null;
   if (data.v >= 3 && data.mode !== 'study' && data.mode !== 'quiz') return null;
+  if (review && data.mode !== 'quiz') return null;
   const lookup = new Map(ordered.map(x => [x.id, x]));
   if (!data.ids.every(id => typeof id === 'string' && lookup.has(id))) return null;
-  if (!data.random && !data.ids.every((id, i) => id === ordered[i].id)) return null;
-  let quizResults = ordered.map(task => ({ mistakes: 0, solved: false, eliminated: [], options: makeAnswerOptions(task) }));
+  if (!review && data.ids.length !== ordered.length) return null;
+  if (!review && !data.random && !data.ids.every((id, i) => id === ordered[i].id)) return null;
+  const list = data.ids.map(id => lookup.get(id));
+  let quizResults = list.map(task => ({ mistakes: 0, solved: false, eliminated: [], options: makeAnswerOptions(task) }));
   if (data.v >= 4) {
-    if (!Array.isArray(data.quizResults) || data.quizResults.length !== ordered.length ||
+    if (!Array.isArray(data.quizResults) || data.quizResults.length !== data.ids.length ||
         !data.quizResults.every(result => result && Number.isInteger(result.mistakes) && result.mistakes >= 0 && result.mistakes <= 2 &&
           typeof result.solved === 'boolean' && Array.isArray(result.eliminated) && result.eliminated.length === result.mistakes &&
           new Set(result.eliminated).size === result.eliminated.length && result.eliminated.every(value => Number.isInteger(value) && value >= 1 && value <= 100))) return null;
     if (data.quizResults.some((result, i) => result.eliminated.includes(lookup.get(data.ids[i]).answer))) return null;
     quizResults = data.quizResults.map((result, i) => {
       const task = lookup.get(data.ids[i]);
-      const options = data.v === 5 ? result.options : makeAnswerOptions(task, Math.random, result.eliminated);
+      const options = data.v >= 5 ? result.options : makeAnswerOptions(task, Math.random, result.eliminated);
       if (!Array.isArray(options) || options.length !== 3 || new Set(options).size !== 3 ||
           !options.includes(task.answer) || !result.eliminated.every(value => options.includes(value)) ||
           options.some(value => !Number.isInteger(value) || value < 1 || value > 100)) return null;
@@ -102,8 +126,8 @@ export function unpackSession(raw) {
     });
     if (quizResults.some(result => result === null)) return null;
   }
-  return { table: data.table, random: data.random, mode: data.v >= 3 ? data.mode : 'study', index: data.index,
-    list: data.ids.map(id => lookup.get(id)), quizResults };
+  return { table: data.table, random: data.random, mode: data.v >= 3 ? data.mode : 'study', ...(review ? { review: true } : {}), index: data.index,
+    list, quizResults };
 }
 
 export function chooseQuizAnswer(session, value) {
@@ -118,6 +142,13 @@ export function chooseQuizAnswer(session, value) {
   result.mistakes++;
   result.eliminated.push(value);
   return 'incorrect';
+}
+
+export function missedExerciseIds(activity, session) {
+  if (activity === 'review') return session.list.flatMap((task, i) => session.quizResults[i].solved ? [] : [task.id]);
+  if (activity === 'check') return session.list.flatMap((task, i) => session.mistakes[i] > 0 ? [task.id] : []);
+  if (activity === 'quiz') return session.list.flatMap((task, i) => session.quizResults[i].mistakes > 0 ? [task.id] : []);
+  return [];
 }
 
 export function quizTotals(session) {
@@ -192,7 +223,7 @@ export function mergeTableProgress(best, scores) {
 
 export function packCheck(check) {
   return JSON.stringify({
-    v: 5, session: JSON.parse(packSession(check)), answers: check.answers, mistakes: check.mistakes,
+    v: 6, session: JSON.parse(packSession(check)), answers: check.answers, mistakes: check.mistakes,
     tracksTableProgress: check.tracksTableProgress
   });
 }
@@ -201,16 +232,16 @@ export function unpackCheck(raw) {
   if (typeof raw !== 'string' || raw.length > 16384) return null;
   let data;
   try { data = JSON.parse(raw); } catch { return null; }
-  if (![3, 4, 5].includes(data?.session?.v) || !Array.isArray(data.answers)) return null;
+  if (![3, 4, 5, 6].includes(data?.session?.v) || !Array.isArray(data.answers)) return null;
   const session = unpackSession(JSON.stringify(data.session));
   if (!session || session.mode !== 'study') return null;
   const { answers } = data;
   if (answers.length < session.index || answers.length > Math.min(session.index + 1, session.list.length) ||
       !answers.every(value => Number.isInteger(value) && value >= 0 && value <= 999)) return null;
-  const mistakes = data.v === 5 ? data.mistakes : answers.map((value, i) => Number(value !== session.list[i].answer));
+  const mistakes = data.v >= 5 ? data.mistakes : answers.map((value, i) => Number(value !== session.list[i].answer));
   if (!Array.isArray(mistakes) || mistakes.length !== answers.length ||
       !mistakes.every((value, i) => Number.isInteger(value) && value >= Number(answers[i] !== session.list[i].answer))) return null;
   // Старая проверка могла потерять историю первых попыток при миграции.
-  const tracksTableProgress = data.v === 5 && data.tracksTableProgress === true;
+  const tracksTableProgress = data.v >= 5 && data.tracksTableProgress === true;
   return { ...session, answers, mistakes, tracksTableProgress };
 }

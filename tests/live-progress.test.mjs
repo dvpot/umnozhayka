@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { newCheck, newSession, submitCheckAnswer } from '../app/engine.js';
+import { newCheck, newReviewSession, newSession, submitCheckAnswer } from '../app/engine.js';
 import { exerciseProgress, latestScores } from '../app/live-progress.js';
 import { handleAccountPlay } from '../tgcloud/lib/account-play.js';
 
@@ -31,6 +31,16 @@ test('counts a partial round and upgrades a corrected example without adding an 
   const progress = exerciseProgress('study', study, new Set([study.list[50].id]));
   assert.deepEqual(progress.played, [2 ** 50 - 1, 1]);
   assert.deepEqual(progress.solved, [0, 1]);
+});
+
+test('a separate mistake review does not alter cumulative progress or table scores', () => {
+  const game = newReviewSession(['2x3', '2x7'], 2);
+  game.index = game.list.length;
+  game.quizResults[0].solved = true;
+  game.quizResults[0].mistakes = 1;
+  assert.equal(exerciseProgress('review', game, new Set()), null);
+  assert.equal(exerciseProgress('toString', game, new Set()), null);
+  assert.equal(latestScores('review', game), null);
 });
 
 test('a completed quiz keeps first-attempt table scores separate from solved totals', () => {

@@ -1,0 +1,12 @@
+# Codex на Ubuntu VM — выпуск повтора ошибок
+
+Рабочий каталог: `/home/dvpot/projects/github/umnozhayka`. Source of truth: GitHub `dvpot/umnozhayka`, ветка `main`. Выпускать только после merge PR #37.
+
+1. Прочитай `AGENTS.md`, `README.md`, `docs/PLAN.md`, `docs/TELEGRAM_DEPLOY.md`, `docs/BOT_PROFILE.md` и Issue #3. Выполни `git status -sb`, `git fetch origin`, затем fast-forward чистую локальную `main`. Запиши SHA и убедись, что в нём есть PR #37. Не затирай локальные изменения.
+2. На Node.js 22.13+ выполни `npm ci && npm run check`, `node --check app/app.js`, `node --check app/engine.js`, `node --check tgcloud/lib/account-play.js` и `git diff --check`. Повтори браузерный сценарий: завершить ×2 в «Выбери ответ» и «Проверке» с неверными попытками, открыть «Повторить ошибки», проверить корректный ответ после ошибочного, убедиться, что после исправления повтор не предлагается снова и общие итоги не меняются. На второй странице того же mock/Telegram аккаунта восстановить текущий список и варианты.
+3. Выполни `npx tgcloud fetch`, `npx tgcloud status`, `npx tgcloud diff`. Подтверди app ID `8854507045`, исходную revision `18` и отсутствие неожиданных файлов/удалений. Ожидается изменение серверного модуля `tgcloud/lib/account-play.js` и собранной статики, соответствующей `app/app.js`, `app/engine.js`, `app/index.html`. Состав `dist/` сверяй с фактическим `status`; не ожидай новую схему и не запускай миграцию: PR #37 не меняет базу.
+4. Перед каждым push повторяй `fetch/status/diff`. Сначала без `--force` опубликуй модуль `npx tgcloud push tgcloud/lib/account-play.js`, затем отдельно статические файлы `npx tgcloud push dist`. После каждой загрузки проверь актуальную revision, app ID, список файлов и отсутствие неожиданных удалений. Проверь HTTP `200` и побайтовое совпадение опубликованных файлов с текущей сборкой.
+5. Если доступен авторизованный Telegram-клиент, проверь реальный проход и повтор, затем продолжение того же активного повтора на другом устройстве одного аккаунта. Не называй mock Telegram-проверку реальным клиентским тестом.
+6. Запиши исходный SHA, revision до/после, модуль и статику, HTTP-проверки и точную среду QA в `docs/TELEGRAM_DEPLOY.md` через отдельный PR. После merge синхронизируй локальную `main` через fast-forward.
+
+Секреты не запрашивай и не выводи. Если CLI сообщает ошибку snapshot после push, выясни фактическое состояние повторными `fetch/status/diff`; `--force` не используй.
