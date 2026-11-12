@@ -30,7 +30,7 @@ function sanitizeState(state) {
         Array.isArray(result.eliminated) && result.eliminated.length === result.mistakes &&
         result.eliminated.every(n => integer(n, 100)))) return null;
   if (!review && ids.length !== expectedLength) return null;
-  const session = { v: source.v, table, random, mode, index, ids, ...(review ? { review: true } : {}),
+  const session = { v: source.v, table, random, mode, index, ids, ...(source.v === 6 ? { review } : {}),
     quizResults: quizResults.map(({ mistakes, solved, options, eliminated }) => ({ mistakes, solved, options, eliminated })) };
   let game = session;
   if (check) {

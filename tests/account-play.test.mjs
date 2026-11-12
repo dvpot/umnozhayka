@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { newReviewSession, newSession, packSession } from '../app/engine.js';
+import { newCheck, newReviewSession, newSession, packCheck, packSession, unpackCheck, unpackSession } from '../app/engine.js';
 import { handleAccountPlay } from '../tgcloud/lib/account-play.js';
 
 const empty = [0, 0, 0, 0, 0, 0];
@@ -36,9 +36,31 @@ test('SQLite isolates signed accounts, rejects stale snapshots and deduplicates 
     const latest = await call(101, { ...write, revision: 1, writeId: 'c'.repeat(32), state: { ...state, voiceEnabled: false } });
     assert.equal(latest.revision, 2);
     assert.equal(latest.state.voiceEnabled, false);
+    assert.ok(unpackSession(JSON.stringify(latest.state.game)), 'ordinary v6 session should survive server sanitization');
     assert.deepEqual(await call(101, { action: 'read' }), { ...latest, totals: [1, 10, 9, 10, 0, 0] });
     assert.deepEqual(await call(1010, { action: 'read' }), { revision: 0, writeId: null, state: null, totals: empty });
     assert.deepEqual((await call(202, { action: 'read' })).totals, empty);
+  } finally {
+    sql.close();
+  }
+});
+
+test('SQLite preserves ordinary v6 check sessions during server sanitization', async () => {
+  const sql = new DatabaseSync(':memory:');
+  try {
+    sql.exec(`CREATE TABLE account_play (account_id INTEGER PRIMARY KEY, revision INTEGER, write_id TEXT, state TEXT);
+      CREATE TABLE account_round (round_key TEXT PRIMARY KEY, mode INTEGER, correct INTEGER, total INTEGER)`);
+    const db = {
+      all: async (query, params) => sql.prepare(query).all(params),
+      get: async (query, params) => sql.prepare(query).get(params),
+      run: async (query, params) => ({ rows: sql.prepare(query).all(params) })
+    };
+    const check = newCheck(4);
+    const state = { v: 1, activity: 'check', roundId: 'd'.repeat(32), game: JSON.parse(packCheck(check)),
+      progress: null, seen: [], revealed: false, counted: false, draft: null, voiceEnabled: true, voiceURI: '' };
+    await handleAccountPlay(db, { action: 'save', revision: 0, writeId: 'e'.repeat(32), state }, ctx(303));
+    const loaded = await handleAccountPlay(db, { action: 'read' }, ctx(303));
+    assert.ok(unpackCheck(JSON.stringify(loaded.state.game)), 'check v6 session should survive server sanitization');
   } finally {
     sql.close();
   }
